@@ -1348,8 +1348,7 @@ namespace UI::Cnc::Gcode
 			{"DEBURRING", "DEBURR"},  {"HELICAL", "HELIX"},	   {"MORPHED", "MORPH"},	  {"PROJECTED", "PROJECT"}};
 		// "T2 (1)": the tool on the first row, the piece on the second
 		{
-			auto digits = [](std::string_view v)
-			{
+			auto digits = [](std::string_view v) {
 				return !v.empty() &&
 					   std::all_of(v.begin(), v.end(), [](char c) { return std::isdigit((unsigned char)c) != 0; });
 			};

@@ -60,8 +60,7 @@ namespace UI::Cnc
 		const int32_t smallH = lv_font_get_line_height(Font::Small());
 		const lv_color_t accent = Colour::Accent();
 
-		auto label = [&](int32_t pdY, int32_t pdX, int32_t pdW, const char* text, lv_text_align_t align)
-		{
+		auto label = [&](int32_t pdY, int32_t pdX, int32_t pdW, const char* text, lv_text_align_t align) {
 			return CreateLabel(
 				m_root, S(pdX), y(pdY), SL(pdX, pdW), smallH, Font::Small(), Colour::Muted(), align, text);
 		};

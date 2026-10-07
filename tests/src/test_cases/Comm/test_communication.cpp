@@ -35,6 +35,13 @@ TEST_F(TestCommunication, SendNext)
 	std::vector<const char*> expectedOrder = {
 		"", "network", "", "boards", "", "move", "", "heat",	"", "tools", "", "spindles", "", "directories",
 		"", "fans",	   "", "inputs", "", "job",	 "", "sensors", "", "state", "", "volumes"};
+	// The CNC UI build also asks for the global variables (its settings), after the others
+	const bool hasGlobal = Comm::FindSeqByKey("global") != nullptr;
+	if (hasGlobal)
+	{
+		expectedOrder.push_back("");
+		expectedOrder.push_back("global");
+	}
 
 	// Verify strict ordering by simulating completion after each sent request.
 	for (const char* expectedKey : expectedOrder)
@@ -83,6 +90,10 @@ TEST_F(TestCommunication, SendNext)
 	setSeqState("sensors", Comm::SeqState::SeqStateOk);
 	setSeqState("state", Comm::SeqState::SeqStateOk);
 	setSeqState("volumes", Comm::SeqState::SeqStateOk);
+	if (hasGlobal)
+	{
+		setSeqState("global", Comm::SeqState::SeqStateOk);
+	}
 
 	// SeqStateUpdate: updated seq should be the next regular seq chosen.
 	setSeqState("move", Comm::SeqState::SeqStateUpdate);

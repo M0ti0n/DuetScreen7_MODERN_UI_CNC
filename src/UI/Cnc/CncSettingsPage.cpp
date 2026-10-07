@@ -647,8 +647,7 @@ namespace UI::Cnc
 			Popup::Choose("IDLE TIMEOUT",
 						  {"OFF", "5 s", "10 s", "30 s", "60 s"},
 						  nearest(IdleValues, v.idleTimeout),
-						  [](size_t c)
-						  {
+						  [](size_t c) {
 							  Settings::Edit([c](Settings::Values& x) { x.idleTimeout = IdleValues[c]; },
 											 Bit(Global::IdleTimeout));
 						  });

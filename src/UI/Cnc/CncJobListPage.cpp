@@ -557,8 +557,7 @@ namespace UI::Cnc
 	void JobListPage::askRun(const std::string& name)
 	{
 		const OM::PrinterStatus status = State::Status();
-		auto refuse = [](OM::PrinterStatus st)
-		{
+		auto refuse = [](OM::PrinterStatus st) {
 			Popup::Refuse((st == OM::PrinterStatus::off) ? "The machine power is off."
 														 : "Wait until the machine is idle.");
 		};
