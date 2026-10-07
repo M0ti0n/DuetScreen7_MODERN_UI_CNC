@@ -316,6 +316,7 @@ namespace Comm
 		case rcvSeqsBoards:
 		case rcvSeqsDirectories:
 		case rcvSeqsFans:
+		case rcvSeqsGlobal:
 		case rcvSeqsHeat:
 		case rcvSeqsInputs:
 		case rcvSeqsJob:

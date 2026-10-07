@@ -60,6 +60,18 @@ bool SensorSubscribers::endstopTriggered(Comm::JsonDecoder* decoder, const bool&
 	return true;
 }
 
+// Only the first reading of each probe (value[0]); ProbeData is posted when it changes
+bool SensorSubscribers::probeValue(Comm::JsonDecoder* decoder, const int32_t& data, const size_t indices[])
+{
+	ZoneScoped;
+	UNUSED(decoder);
+	if (indices[1] == 0 && OM::UpdateProbeValue(indices[0], data))
+	{
+		Model::get().post<EventType::ProbeData>();
+	}
+	return true;
+}
+
 bool SensorSubscribers::analogSensorArrayEnd(Comm::JsonDecoder* decoder, const size_t indices[])
 {
 	ZoneScoped;

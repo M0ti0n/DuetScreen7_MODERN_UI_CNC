@@ -123,4 +123,38 @@ namespace OM
 		endstop->triggered = triggered;
 		return true;
 	}
+	// ---- Probes ----
+	static int32_t s_probeValues[MaxProbes] = {};
+	static bool s_probeReported[MaxProbes] = {};
+
+	bool UpdateProbeValue(const size_t index, const int32_t value)
+	{
+		if (index >= MaxProbes)
+		{
+			return false;
+		}
+		const bool changed = !s_probeReported[index] || s_probeValues[index] != value;
+		s_probeValues[index] = value;
+		s_probeReported[index] = true;
+		return changed;
+	}
+
+	bool GetProbeValue(const size_t index, int32_t& value)
+	{
+		if (index >= MaxProbes || !s_probeReported[index])
+		{
+			return false;
+		}
+		value = s_probeValues[index];
+		return true;
+	}
+
+	void ResetProbes()
+	{
+		for (size_t i = 0; i < MaxProbes; ++i)
+		{
+			s_probeValues[i] = 0;
+			s_probeReported[i] = false;
+		}
+	}
 } // namespace OM

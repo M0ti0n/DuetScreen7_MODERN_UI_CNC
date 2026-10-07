@@ -26,6 +26,7 @@ namespace Comm
 		rcvSeqsBoards,
 		rcvSeqsDirectories,
 		rcvSeqsFans,
+		rcvSeqsGlobal,
 		rcvSeqsHeat,
 		rcvSeqsInputs,
 		rcvSeqsJob,

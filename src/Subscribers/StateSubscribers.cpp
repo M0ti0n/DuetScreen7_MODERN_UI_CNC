@@ -46,6 +46,19 @@ bool StateSubscribers::currentTool(Comm::JsonDecoder* decoder, const int32_t& da
 	return true;
 }
 
+bool StateSubscribers::nextTool(Comm::JsonDecoder* decoder, const int32_t& data, const size_t indices[])
+{
+	ZoneScoped;
+	UNUSED(decoder);
+	UNUSED(indices);
+	if (data != OM::GetNextTool())
+	{
+		OM::SetNextTool(data);
+		Model::get().post<EventType::NextTool>();
+	}
+	return true;
+}
+
 bool StateSubscribers::nullMessageBox(Comm::JsonDecoder* decoder, const char* data, const size_t indices[])
 {
 	ZoneScoped;

@@ -54,4 +54,10 @@ namespace OM
 
 	bool UpdateEndstopTriggered(const size_t index, const bool triggered);
 
+	// Probe readings, sensors.probes[].value[0] (0..1000; RRF reports a triggered probe as 500 and above)
+	constexpr size_t MaxProbes = 4;
+	bool UpdateProbeValue(const size_t index, const int32_t value); // true when the value changed
+	bool GetProbeValue(const size_t index, int32_t& value);			// false: not reported (yet)
+	void ResetProbes();
+
 } // namespace OM

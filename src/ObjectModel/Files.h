@@ -192,6 +192,8 @@ namespace OM::FileSystem
 					  const std::string& path,
 					  request_files_cb_t callback,
 					  bool runEveryTime = false);
+	// The same for a full path ("1:/", a second card's root)
+	void RequestFilesAt(const std::string& fullPath, request_files_cb_t callback, bool runEveryTime = false);
 	void RequestUsbFiles(const std::string& path);
 	void RunFile(const ItemPtr& file);
 	void RunMacro(const std::string& path);

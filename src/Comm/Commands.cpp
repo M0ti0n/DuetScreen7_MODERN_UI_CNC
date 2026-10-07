@@ -32,6 +32,7 @@ namespace Comm
 		{rcvSeqsBoards, "seqs:boards"},
 		{rcvSeqsDirectories, "seqs:directories"},
 		{rcvSeqsFans, "seqs:fans"},
+		{rcvSeqsGlobal, "seqs:global"},
 		{rcvSeqsHeat, "seqs:heat"},
 		{rcvSeqsInputs, "seqs:inputs"},
 		{rcvSeqsJob, "seqs:job"},

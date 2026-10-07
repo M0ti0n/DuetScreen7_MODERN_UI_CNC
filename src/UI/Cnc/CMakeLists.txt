@@ -1,0 +1,31 @@
+# Portrait CNC UI (enabled with -DDUETSCREEN_CNC_UI=ON; always compiled so the tests can use it)
+target_sources(
+  DuetScreen.lib
+  PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncControlPage.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncGlyphs.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncHomePresenter.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncHomeView.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncPopup.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncState.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncTheme.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncWidgets.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncWcsOffsetsPage.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncWcsToolsPage.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncWcsProbePage.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncMessages.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncKeyboard.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncJobListPage.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncJobStatusPage.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncMacrosPage.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncAlertsPage.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncConsolePage.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncSettings.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncPanel.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncSettingsPage.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncGcode.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncPreviewSource.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncPreviewView.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncJobPreviewPage.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncSplash.cpp
+)

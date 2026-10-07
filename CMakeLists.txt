@@ -130,6 +130,7 @@ option(DUETSCREEN_ENABLE_LV_PROFILING "Enable lvgl profiling" ${DUETSCREEN_ENABL
 option(DUETSCREEN_USE_FIXED_TEST_STRINGS "Use fixed strings for UI labels like build date/time for unit tests" OFF)
 option(DUETSCREEN_USE_LV_ANIMATION "Enable LVGL animations" ON)
 option(DUETSCREEN_CONSOLE_SIDE_PANEL "Show console in side panel next to main window" OFF)
+option(DUETSCREEN_CNC_UI "Show the portrait CNC UI (src/UI/Cnc) instead of the printer UI" OFF)
 
 set(_dev_default OFF)
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -315,10 +316,17 @@ target_compile_definitions(DuetScreen.lib PUBLIC MULTITHREADED)
 
 if(PROCESSOR STREQUAL "T113")
   pkg_check_modules(XKBCOMMON xkbcommon)
+  if(DUETSCREEN_CNC_UI)
+    # The CNC UI runs rotated by 90 degrees. In direct mode LVGL's fbdev driver rotates the whole
+    # screen on every refresh; in partial mode it rotates only the areas that changed.
+    set(_fbdev_render_mode LV_DISPLAY_RENDER_MODE_PARTIAL)
+  else()
+    set(_fbdev_render_mode LV_DISPLAY_RENDER_MODE_DIRECT)
+  endif()
   target_compile_definitions(lvgl PUBLIC 
                                   LV_USE_LINUX_FBDEV=1
                                   LV_USE_EVDEV=1
-                                  LV_LINUX_FBDEV_RENDER_MODE=LV_DISPLAY_RENDER_MODE_DIRECT
+                                  LV_LINUX_FBDEV_RENDER_MODE=${_fbdev_render_mode}
                                   LV_LINUX_FBDEV_BUFFER_COUNT=2)
   if(XKBCOMMON_FOUND)
     message(STATUS "xkbcommon found: enabling XKB support for evdev")

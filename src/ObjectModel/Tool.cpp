@@ -24,6 +24,7 @@ static ToolList s_tools;
 namespace OM
 {
 	static int32_t s_currentTool = -1;
+	static int32_t s_nextTool = -1;
 
 	void ToolHeater::Reset()
 	{
@@ -752,6 +753,16 @@ namespace OM
 			return nullptr;
 		}
 		return GetTool(s_currentTool);
+	}
+
+	void SetNextTool(const int32_t toolIndex)
+	{
+		s_nextTool = toolIndex;
+	}
+
+	int32_t GetNextTool()
+	{
+		return s_nextTool;
 	}
 
 	float GetCurrentToolAxisOffset(const Move::AxisPtr& axis)

@@ -72,12 +72,14 @@ namespace UI
 	XX(LogMessage, Log::DebugLevel, Log::log_time_t, std::string)                                                      \
 	XX(AnalogSensorData)                                                                                               \
 	XX(EndstopData)                                                                                                    \
+	XX(ProbeData)                                                                                                      \
 	XX(SpindleData)                                                                                                    \
 	XX(NetworkName)                                                                                                    \
 	XX(PrinterUniqueId)                                                                                                \
 	XX(IpAddress, std::string)                                                                                         \
 	XX(Status, OM::PrinterStatus)                                                                                      \
 	XX(CurrentTool)                                                                                                    \
+	XX(NextTool)                                                                                                       \
 	XX(Alert, OM::Alert)                                                                                               \
 	XX(Time)                                                                                                           \
 	XX(ToolData)                                                                                                       \

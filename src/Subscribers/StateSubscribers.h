@@ -11,6 +11,7 @@ class StateSubscribers : public SubscriberMap
 		addSubscriber("network:interfaces^:actualIP", networkActualIP);
 		addSubscriber("state:status", status);
 		addSubscriber("state:currentTool", currentTool);
+		addSubscriber("state:nextTool", nextTool);
 		addSubscriber("state:messageBox", nullMessageBox);
 		addSubscriber("state:messageBox:axisControls", messageBoxAxisControls);
 		addSubscriber("state:messageBox:message", messageBoxMessage);
@@ -32,6 +33,7 @@ class StateSubscribers : public SubscriberMap
 	static bool networkActualIP(Comm::JsonDecoder* decoder, const char* data, const size_t indices[]);
 	static bool status(Comm::JsonDecoder* decoder, const char* data, const size_t indices[]);
 	static bool currentTool(Comm::JsonDecoder* decoder, const int32_t& data, const size_t indices[]);
+	static bool nextTool(Comm::JsonDecoder* decoder, const int32_t& data, const size_t indices[]);
 	static bool nullMessageBox(Comm::JsonDecoder* decoder, const char* data, const size_t indices[]);
 	static bool messageBoxAxisControls(Comm::JsonDecoder* decoder, const uint32_t& data, const size_t indices[]);
 	static bool messageBoxMessage(Comm::JsonDecoder* decoder, const char* data, const size_t indices[]);

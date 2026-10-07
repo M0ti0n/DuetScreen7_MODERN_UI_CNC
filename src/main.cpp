@@ -13,6 +13,11 @@
 #include "Hardware/Reset.h"
 #include "Hardware/Usb.h"
 #include "UI/Screens/Home/HomeView.h"
+#if CNC_UI
+#  include "UI/Cnc/CncHomeView.h"
+#  include "UI/Cnc/CncPanel.h"
+#  include "UI/Cnc/CncSplash.h"
+#endif
 #include "UI/Styles/Font.h"
 #include "UI/Styles/Styles.h"
 #include "UI/Widgets/HardwareTest/HardwareTest.h"
@@ -120,7 +125,12 @@ int main(int argc, char** argv)
 	}
 
 	/*Initialize the HAL (display, input devices, tick) for LVGL*/
+#if CNC_UI && SIMULATION
+	// CNC UI on PC: a portrait window, no rotation needed
+	lv_display_t* display = hal_init(600, 1024);
+#else
 	lv_display_t* display = hal_init(1024, 600);
+#endif
 
 	DisplayHelper::setBrightness(StorageHelper::getData(ID_SYS_BRIGHTNESS_KEY));
 	{
@@ -128,10 +138,20 @@ int main(int argc, char** argv)
 		UI::Themes::init(display);
 	}
 
+#if CNC_UI
+	// The CNC UI is portrait only (600 x 1024): the panel is rotated (on PC the window is already portrait)
+#  if !SIMULATION
+	DisplayHelper::setRotation(UI::Cnc::Panel::Rotation()); // SETTINGS > SCREEN ROTATION: 90 or 270
+#  endif
+	static UI::CncHomeView cncHome;
+	cncHome.show();
+	UI::Cnc::Splash::Show(); // 3 s over the home screen, a touch closes it; skipped after our own restart
+#else
 	DisplayHelper::setRotation(StorageHelper::getData(ID_DISPLAY_ROTATION));
 
 	UI::HomeView& home = UI::HomeView::instance();
 	home.show();
+#endif
 
 #if HARDWARE_TEST
 	UI::HardwareTest hw_test;

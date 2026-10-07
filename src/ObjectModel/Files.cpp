@@ -345,8 +345,12 @@ namespace OM::FileSystem
 					  bool runEveryTime)
 	{
 		ZoneScoped;
-		std::string full_path = fmt::format("{}{}", OM::Directories::GetDirectory(baseFolder), path);
+		RequestFilesAt(fmt::format("{}{}", OM::Directories::GetDirectory(baseFolder), path), callback, runEveryTime);
+	}
 
+	void RequestFilesAt(const std::string& full_path, request_files_cb_t callback, bool runEveryTime)
+	{
+		ZoneScoped;
 		FileListRequestPtr cached;
 		FileListRequestPtr reqPtr;
 		{

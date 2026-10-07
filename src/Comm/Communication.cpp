@@ -38,6 +38,7 @@
 #define FETCH_BOARDS (1)
 #define FETCH_DIRECTORIES (1)
 #define FETCH_FANS (1)
+#define FETCH_GLOBAL (CNC_UI) // the CNC UI keeps its settings in globals
 #define FETCH_HEAT (1)
 #define FETCH_INPUTS (1)
 #define FETCH_JOB (1)
@@ -99,6 +100,10 @@ namespace Comm
 #endif
 #if FETCH_VOLUMES
 		Seq{.seqid = rcvSeqsVolumes, .lastSeq = 0, .state = SeqStateInit, .key = "volumes", .flags = "v"},
+#endif
+#if FETCH_GLOBAL
+		// Global variables (the CNC UI's settings, global.cnc*): asked for at connect and whenever one changes
+		Seq{.seqid = rcvSeqsGlobal, .lastSeq = 0, .state = SeqStateInit, .key = "global", .flags = "v"},
 #endif
 	};
 

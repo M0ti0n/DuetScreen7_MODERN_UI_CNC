@@ -1,0 +1,1 @@
+{"key":"spindles","flags":"v","result":[{"active":12000,"canReverse":true,"current":12000,"frequency":0,"idlePwm":0,"max":24000,"maxPwm":1,"min":0,"minPwm":0,"state":"forward"}]}

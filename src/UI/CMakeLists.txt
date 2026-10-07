@@ -1,3 +1,4 @@
+add_subdirectory(Cnc)
 add_subdirectory(Components)
 add_subdirectory(Core)
 add_subdirectory(Screens)
