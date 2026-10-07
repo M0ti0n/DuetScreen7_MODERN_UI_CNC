@@ -18,6 +18,45 @@ cmake --preset T113-Release -DDUETSCREEN_CNC_UI=ON
 
 With the option OFF (default) the build is the normal printer UI.
 
+## Testing without a machine: the fake Duet
+
+`scripts/fake_duet.py` pretends to be a CNC Duet in standalone mode on the network, so every page
+of the simulator can be used live. It needs only Python 3 (no packages).
+
+```bash
+# terminal 1 (repo root)
+python3 scripts/fake_duet.py                # listens on 127.0.0.1:8080
+# terminal 2 (repo root)
+./out/build/CNC-Simulation-Release/DuetScreen
+```
+
+In the simulator: SYSTEM > SETTINGS > CONNECTION > NETWORK, address `127.0.0.1:8080` (the `:` is on
+the keyboard's `#+=` page). The simulator keeps this in `config.json` (repo root, not committed).
+
+What it does:
+
+- A 3-axis mill (`--axes 4` adds A): X 0..600, Y 0..400, Z -120..0 machine coordinates. It starts
+  unhomed like a real machine (`--homed` to skip that). Moves take real time (`--speed 3` = three
+  times faster).
+- Homing (G28), jogging and G0/G1/G2/G3, G53, workplaces G54..G59.3 with G10 L2 / L20, tool offsets
+  (G10 P), tools T0..T3, spindle M3/M4/M5 (ramps up), M220, M290 babystepping.
+- Probing G38.2/G38.3 touches a fake stock top at machine Z-70 and edges at machine X150 / Y100.
+- Jobs (M32, M23 + M24): progress, time left, pause M25, resume M24, cancel M0, M0 in the file.
+- Macros (M98) with meta commands: if/elif/else, while, var, global, set, echo (also to a file),
+  abort, expressions like `{move.axes[2].userPosition + 1}`.
+- Machine messages M291 S0..S7 (choices, numbers, text) and the panel's M292 answers.
+- The panel's settings: `global` / `set global`, `echo >"file"`, M471 rename. config.g loads
+  `cnc-settings.g` again when the fake restarts, as on a real machine.
+- E-stop: M112 halts, M999 restarts (unhomed, config.g runs again).
+
+The virtual SD card is a normal folder, `~/fake_duet_sd` (`--sd` for another one), created with
+demo jobs and macros on the first run (`--reset-sd` recreates it). Put your own jobs in
+`~/fake_duet_sd/0/gcodes/` and macros in `~/fake_duet_sd/0/macros/`. `--card1` mounts `1:/`.
+
+The terminal shows every command the panel sends (`>`) and every reply (`<`). Unknown commands are
+listed as `(ignored ...)`. It is a test tool, not RepRapFirmware: timing, limits and error texts
+are close to RRF, not exact.
+
 ## Where things are
 
 | Path | What |
@@ -84,6 +123,8 @@ not affected:
 | `src/Comm/Commands.*`, `src/Comm/JsonDecoder.cpp`, `src/Comm/Communication.cpp` | `seqs.global`: the machine's globals are fetched (CNC builds only, last in the list), for the CNC settings |
 | `src/ObjectModel/Files.*` | `RequestFilesAt(fullPath, …)`: a listing of any folder (JOB LIST on a second card, "1:/"); `RequestFiles` uses it |
 | `src/main.cpp` | the CNC UI instead of the printer UI (`-DDUETSCREEN_CNC_UI=ON`), portrait, rotation from SETTINGS, the start-up splash |
+| `tests/src/test_cases/Comm/test_communication.cpp` | `SendNext` expects the extra `global` request when the build has it |
+| `scripts/fake_duet.py` | new: a pretend CNC Duet on the network for the simulator (see "Testing without a machine") |
 
 ## Rules
 
