@@ -764,7 +764,8 @@ namespace UI::Cnc
 			return {};
 		}
 		const Gcode::Operation& o = m_program->ops[(size_t)op];
-		auto length = [](double mm) {
+		auto length = [](double mm)
+		{
 			return (mm >= 1000.0) ? fmt::format("{:.1f} m", mm / 1000.0) : fmt::format("{:d} mm", (int)std::lround(mm));
 		};
 		std::string text;
