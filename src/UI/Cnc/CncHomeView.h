@@ -57,6 +57,7 @@ namespace UI
 		void showPage(unsigned int page);
 		unsigned int getPage() const { return m_page; }
 		void showSubTab(unsigned int subTab);			// on the current page
+		void showJobPreview();							// JOB > PREVIEW (PREVIEW in JOB LIST's RUN question)
 		unsigned int getSubTab(unsigned int page) const { return (page < NumPages) ? m_subTab[page] : 0; }
 		static unsigned int getSubTabCount(unsigned int page);
 		static bool isCompactPage(unsigned int page);	// JOB, MACROS, SYSTEM

@@ -546,6 +546,45 @@ namespace UI::Cnc
 		}
 	}
 
+	void DrawTrashIcon(Pen& pen, lv_color_t colour, lv_color_t bg)
+	{
+		// Modern UI Display.cpp (IconTrash), the same PanelDue pixel coordinates around the centre (+1 down)
+		constexpr int Dy = 1;
+		pen.setColour(colour);
+		pen.fillRect(-8, Dy - 24, 8, Dy - 20);		  // handle
+		pen.fillRoundRect(-22, Dy - 19, 22, Dy - 12); // lid
+		for (int i = 0; i < 34; ++i)				  // body, 37 px wide at the top narrowing to 29
+		{
+			int halfWidth = 18 - (i * 4) / 33;
+			if (i >= 32)
+			{
+				--halfWidth; // soften the bottom corners
+			}
+			pen.fillRect(-halfWidth, Dy - 10 + i, halfWidth, Dy - 10 + i);
+		}
+		pen.setColour(bg);
+		for (int k = -1; k <= 1; ++k) // three slots
+		{
+			pen.fillRect(k * 9 - 2, Dy - 4, k * 9 + 2, Dy + 17);
+		}
+	}
+
+	void DrawPlayIcon(Pen& pen, lv_color_t colour)
+	{
+		// 26 x 30 PanelDue px, the tip to the right
+		constexpr int HalfH = 15, W = 26, Left = -11;
+		pen.setColour(colour);
+		for (int yy = -HalfH; yy <= HalfH; ++yy)
+		{
+			const int ay = (yy < 0) ? -yy : yy;
+			const int w = (W * (HalfH - ay)) / HalfH;
+			if (w > 0)
+			{
+				pen.fillRect(Left, yy, Left + w, yy);
+			}
+		}
+	}
+
 	void DrawSearchGlyph(Pen& pen, lv_color_t colour, lv_color_t bg)
 	{
 		const int rx = -4, ry = -4, r = 11;

@@ -537,6 +537,7 @@ namespace UI
 		m_jobList.create(m_content[PageJob][JobListTab], CompactContentTop);
 		m_jobPreview.create(m_content[PageJob][JobPreviewTab], CompactContentTop);
 		m_jobPreview.setListPath([this] { return m_jobList.selectedPath(); });
+		m_jobList.onPreviewRequest([this] { showJobPreview(); });
 		m_jobStatus.create(m_content[PageJob][JobStatusTab], CompactContentTop);
 		m_jobStatus.onShowRequest([this] { showJobStatus(); });
 		m_macros.create(m_content[PageMacros][0], CompactContentTop);
@@ -565,6 +566,16 @@ namespace UI
 		{
 			m_subTab[PageJob] = JobStatusTab;
 			m_tabs[PageJob].select(JobStatusTab);
+			showPage(PageJob);
+		}
+	}
+
+	void CncHomeView::showJobPreview()
+	{
+		if (m_page != PageJob || m_subTab[PageJob] != JobPreviewTab)
+		{
+			m_subTab[PageJob] = JobPreviewTab;
+			m_tabs[PageJob].select(JobPreviewTab);
 			showPage(PageJob);
 		}
 	}

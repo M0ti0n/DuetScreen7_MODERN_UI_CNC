@@ -1,8 +1,8 @@
 /*
  * test_cnc_job_list.cpp
  *
- * JOB > JOB LIST of the CNC UI and the shared keyboard: listing, folders, selection, RUN with its
- * refusals, search, and screenshots (compare with the PanelDue CNC UI references x 1.25).
+ * JOB > JOB LIST of the CNC UI and the shared keyboard: listing, folders, selection, the JOB popup
+ * (PREVIEW, delete), the RUN question with its refusals, search, and screenshots (compare with the PanelDue CNC UI references x 1.25).
  *
  * Listing (tests/object_model/cnc/filelist_*.json): Fixtures/ and six job files, as in the PanelDue
  * simulator scenarios.
@@ -151,7 +151,7 @@ TEST_F(TestCncJobList, PagingTenRows)
 
 // ---- Select and RUN ----------------------------------------------------------------------------
 
-TEST_F(TestCncJobList, TapSelectsSecondTapRuns)
+TEST_F(TestCncJobList, TapSelectsSecondTapAsks)
 {
 	auto view = makeView();
 	auto& page = view->getJobListPage();
@@ -160,35 +160,96 @@ TEST_F(TestCncJobList, TapSelectsSecondTapRuns)
 	EXPECT_FALSE(Popup::IsOpen());
 	EXPECT_TRUE(lv_test_screenshot_compare("cnc/job_list_selected.png")); // PanelDue k04a_job_list_selected
 	page.rowPressed(1);
-	EXPECT_EQ(Popup::Title(), "ALERT !");
-	EXPECT_EQ(Popup::Lines(), Lines({"Do you want to RUN", "this job?", "bracket_v2.gcode"}));
-	EXPECT_TRUE(lv_test_screenshot_compare("cnc/job_list_run_confirm.png")); // PanelDue k04b_confirm_run_job
-	Popup::PressOk();
-	EXPECT_EQ(last(), "M32 \"0:/gcodes/bracket_v2.gcode\"\n");
+	EXPECT_EQ(Popup::Title(), "JOB");
+	EXPECT_EQ(Popup::Lines(), Lines({"bracket_v2.gcode", "", "Check: open in PREVIEW", "Trash: delete the file"}));
+	EXPECT_TRUE(Popup::HasTrash());
+	EXPECT_TRUE(lv_test_screenshot_compare("cnc/job_list_job_popup.png")); // Modern UI START PRINT: trash / X / check
+	Popup::PressOk(); // PREVIEW of the file, nothing started
+	EXPECT_FALSE(Popup::IsOpen());
+	EXPECT_TRUE(sent.empty());
+	EXPECT_EQ(view->getSubTab(UI::CncHomeView::PageJob), (unsigned int)UI::CncHomeView::JobPreviewTab);
+	EXPECT_EQ(page.selectedPath(), "0:/gcodes/bracket_v2.gcode");
 }
 
-TEST_F(TestCncJobList, RunRefusals)
+TEST_F(TestCncJobList, DeleteAfterConfirm)
 {
 	auto view = makeView();
 	auto& page = view->getJobListPage();
-	page.rowPressed(2);
+	page.rowPressed(1);
+	page.rowPressed(1);
+	Popup::PressTrash();
+	EXPECT_EQ(Popup::Title(), "DELETE");
+	EXPECT_EQ(Popup::Lines(), Lines({"Delete this file?", "bracket_v2.gcode"}));
+	EXPECT_TRUE(lv_test_screenshot_compare("cnc/job_list_delete_confirm.png"));
+	Popup::PressCancel(); // X: nothing deleted
+	EXPECT_TRUE(sent.empty());
+	EXPECT_EQ(page.rowText(1), "bracket_v2.gcode");
+
+	page.rowPressed(1);
+	Popup::PressTrash();
+	Popup::PressOk();
+	EXPECT_EQ(last(), "M30 \"0:/gcodes/bracket_v2.gcode\"\n");
+	EXPECT_EQ(page.selectedName(), "");
+	EXPECT_EQ(page.rowText(1), "faceplate.nc"); // gone at once
+	lv_tick_inc(JobListPage::RefreshAfterDelete + 100);
+	page.tick(); // then the machine's listing again (no "Loading...": the rows stay until it arrives)
+	EXPECT_EQ(page.message(), "");
+	load_model_data_from_file("tests/object_model/cnc/filelist_gcodes.json"); // what the machine lists wins
+	EXPECT_EQ(page.rowText(1), "bracket_v2.gcode");
+}
+
+TEST_F(TestCncJobList, DeleteRefusals)
+{
+	auto view = makeView();
+	auto& page = view->getJobListPage();
+	page.setJobFile("0:/gcodes/bracket_v2.gcode");
 	State::StatusChanged(OM::PrinterStatus::processing);
+	page.rowPressed(1);
+	page.rowPressed(1); // the JOB popup also while a job runs
+	Popup::PressTrash();
+	EXPECT_EQ(text(), "This job is running. It cannot be deleted.");
+	Popup::Close();
 	page.rowPressed(2);
+	page.rowPressed(2);
+	Popup::PressTrash(); // another file: allowed while the job runs
+	EXPECT_EQ(Popup::Title(), "DELETE");
+	Popup::Close();
+	State::StatusChanged(OM::PrinterStatus::idle);
+	State::StatusChanged(OM::PrinterStatus::disconnected);
+	page.rowPressed(2);
+	Popup::PressTrash();
+	EXPECT_EQ(text(), "No connection to the machine.");
+	EXPECT_TRUE(sent.empty());
+}
+
+TEST_F(TestCncJobList, RunQuestionAndRefusals)
+{
+	auto view = makeView();
+	AskRunJob("0:/gcodes/bracket_v2.gcode");
+	EXPECT_EQ(Popup::Title(), "ALERT !");
+	EXPECT_EQ(Popup::Lines(), Lines({"Do you want to RUN", "this job?", "bracket_v2.gcode"}));
+	EXPECT_FALSE(Popup::HasTrash());
+	Popup::PressOk();
+	EXPECT_EQ(last(), "M32 \"0:/gcodes/bracket_v2.gcode\"\n");
+	sent.clear();
+
+	State::StatusChanged(OM::PrinterStatus::processing);
+	AskRunJob("0:/gcodes/faceplate.nc");
 	EXPECT_EQ(text(), "A job is already running.");
 	State::StatusChanged(OM::PrinterStatus::idle);
 	State::StatusChanged(OM::PrinterStatus::busy);
-	page.rowPressed(2);
+	AskRunJob("0:/gcodes/faceplate.nc");
 	EXPECT_EQ(text(), "Wait until the machine is idle.");
 	State::StatusChanged(OM::PrinterStatus::off);
-	page.rowPressed(2);
+	AskRunJob("0:/gcodes/faceplate.nc");
 	EXPECT_EQ(text(), "The machine power is off.");
 	State::StatusChanged(OM::PrinterStatus::connecting);
-	page.rowPressed(2);
+	AskRunJob("0:/gcodes/faceplate.nc");
 	EXPECT_EQ(text(), "No connection to the machine.");
 
 	// The machine got busy while the question was open
 	State::StatusChanged(OM::PrinterStatus::idle);
-	page.rowPressed(2);
+	AskRunJob("0:/gcodes/faceplate.nc");
 	State::StatusChanged(OM::PrinterStatus::busy);
 	Popup::PressOk();
 	EXPECT_EQ(text(), "Wait until the machine is idle.");
@@ -295,8 +356,9 @@ TEST_F(TestCncJobList, SecondCard)
 	page.rowPressed(1);
 	EXPECT_EQ(page.selectedPath(), "1:/spare_part.nc");
 	page.rowPressed(1);
+	Popup::PressTrash(); // a file on the second card is deleted with its own path
 	Popup::PressOk();
-	EXPECT_EQ(last(), "M32 \"1:/spare_part.nc\"\n");
+	EXPECT_EQ(last(), "M30 \"1:/spare_part.nc\"\n");
 
 	// Next: back to card 0, its gcodes folder
 	page.cardPressed();

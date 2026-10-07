@@ -39,6 +39,9 @@ namespace UI::Cnc::Popup
 
 	// Confirmation: title, information lines, X and check. onOk runs on the check mark.
 	void Confirm(std::string_view title, const std::vector<std::string>& lines, Handler onOk);
+	// The same with a trash button left of X (JOB LIST: delete), as the Modern UI's START PRINT popup:
+	// trash / X / check. onTrash runs on the trash can.
+	void ConfirmWithTrash(std::string_view title, const std::vector<std::string>& lines, Handler onTrash, Handler onOk);
 
 	// ALERT ! with the reason (word-wrapped), only X. Used for every refused action.
 	void Alert(std::string_view text);
@@ -168,6 +171,8 @@ namespace UI::Cnc::Popup
 	bool HasOk();
 	void PressOk();
 	void PressCancel();
+	bool HasTrash(); // ConfirmWithTrash is open
+	void PressTrash();
 	bool IsChooseOpen();
 	size_t ChoiceSelected();
 	void PressChoice(size_t index);

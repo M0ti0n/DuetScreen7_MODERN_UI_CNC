@@ -1065,7 +1065,15 @@ class Machine:
             elif self.job:
                 self.cancel_job()
         elif code in ("M2", "M30"):
-            if ctx.job:
+            name = p.text("P") or next((raw for (raw, kind) in p.w.values() if kind == "str"), "")
+            if code == "M30" and name:  # M30 "file": delete it
+                path = self.path(name, "gcodes")
+                if path.is_file():
+                    path.unlink()
+                    log(f"  deleted {self.om_name(path) if path.is_absolute() else name}")
+                else:
+                    self.reply(f"Error: M30: file {name} not found")
+            elif ctx.job:
                 raise StopIteration()
         elif code in ("M3", "M4"):
             with m.lock:

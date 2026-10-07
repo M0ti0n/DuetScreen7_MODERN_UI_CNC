@@ -97,6 +97,11 @@ namespace UI::Cnc
 	// half: half the size of the X in PanelDue px (Modern UI: the shorter button side / 2 - 12)
 	void DrawCancelIcon(Pen& pen, lv_color_t colour, float half = 21.0f, int32_t width = 5);
 	void DrawOkIcon(Pen& pen, lv_color_t colour);
+	// Trash can of the Modern UI (ModernIconButton IconTrash): handle, lid, tapering body with three
+	// slots cut out in the button colour
+	void DrawTrashIcon(Pen& pen, lv_color_t colour, lv_color_t bg);
+	// Play triangle (PREVIEW: RUN), pointing right, centred
+	void DrawPlayIcon(Pen& pen, lv_color_t colour);
 	// Backspace key of the keyboard (PanelDue IconBackspace bitmap)
 	void DrawBackspaceIcon(Pen& pen);
 	// Backspace key of the numpad (Modern UI icon: outlined tag with an X)

@@ -69,6 +69,9 @@ namespace UI::Cnc
 		void doubleTap();
 		void pressMessage();							// tap on the notice (after a failure: try again)
 		void pressInfo();								// the name button: info popup
+		void pressRun();								// the RUN tile (file name): "Do you want to RUN" or why not
+		bool runTileShown() const { return m_runLook != RunHidden; }
+		bool runAvailable() const { return m_runLook == RunReady; }	// accent outline and play triangle
 		void pressWarnings();							// the warning button: warning popup
 		bool warningButtonShown() const;
 		// Checks of an operation against the stock and the machine: below the stock bottom, cutting with the
@@ -104,11 +107,17 @@ namespace UI::Cnc
 		void updateOverlays();
 		void showMessage(const std::string& text);
 		void createStrip(lv_obj_t* root);
+		void createRunTile(lv_obj_t* view);
+		void updateRunTile();							// look follows the file and the machine (every tick)
 		void createInfo(lv_obj_t* root);
 
 		lv_obj_t* m_root = nullptr;
 		int32_t m_top = 0;
 		PreviewView m_view;
+		enum RunLook : int { RunUnknown = -1, RunHidden = 0, RunGrey, RunReady };
+		lv_obj_t* m_runTile = nullptr;					// [ > name / summary ]: RUN
+		int m_runLook = RunUnknown;
+		std::string m_runPath;
 		lv_obj_t* m_fileLabel = nullptr;
 		lv_obj_t* m_summaryLabel = nullptr;
 		lv_obj_t* m_stockLabel = nullptr;

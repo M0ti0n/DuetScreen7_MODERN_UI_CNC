@@ -317,6 +317,11 @@ namespace UI::Cnc
 		{
 			updateSd(); // a card mounted or removed
 		}
+		if (m_refreshAt != 0 && State::Now() >= m_refreshAt)
+		{
+			m_refreshAt = 0;
+			request(); // after a delete: what the machine has now
+		}
 		if (m_shown && !m_loaded && !m_error && State::Now() - m_requestTime > ListTimeout)
 		{
 			m_error = true; // no answer: the folder cannot be read
@@ -529,7 +534,7 @@ namespace UI::Cnc
 		}
 		else if (m_selected == m_entries[(size_t)e].name)
 		{
-			askRun(m_selected); // second tap on the selected file
+			askAction(m_selected); // second tap on the selected file
 		}
 		else
 		{
@@ -552,47 +557,139 @@ namespace UI::Cnc
 		showRows();
 	}
 
-	// ---- RUN ----
+	// ---- RUN (PREVIEW's RUN tile) ----
 
-	void JobListPage::askRun(const std::string& name)
+	namespace
 	{
-		const OM::PrinterStatus status = State::Status();
-		auto refuse = [](OM::PrinterStatus st)
+		// Why a job cannot start now, "" when it can
+		std::string runRefusal()
 		{
-			Popup::Refuse((st == OM::PrinterStatus::off) ? "The machine power is off."
-														 : "Wait until the machine is idle.");
-		};
-		if (State::JobInProgress())
+			if (State::JobInProgress())
+			{
+				return "A job is already running.";
+			}
+			const OM::PrinterStatus status = State::Status();
+			if (status == OM::PrinterStatus::connecting || status == OM::PrinterStatus::disconnected)
+			{
+				return "No connection to the machine.";
+			}
+			if (status == OM::PrinterStatus::off)
+			{
+				return "The machine power is off.";
+			}
+			if (status != OM::PrinterStatus::idle)
+			{
+				return "Wait until the machine is idle.";
+			}
+			return "";
+		}
+
+		std::string baseName(const std::string& path)
 		{
-			Popup::Refuse("A job is already running.");
+			const size_t cut = path.rfind('/');
+			return (cut == std::string::npos) ? path : path.substr(cut + 1);
+		}
+	} // namespace
+
+	void AskRunJob(const std::string& path)
+	{
+		if (path.empty())
+		{
 			return;
 		}
-		if (status == OM::PrinterStatus::connecting || status == OM::PrinterStatus::disconnected)
+		const std::string why = runRefusal();
+		if (!why.empty())
 		{
-			Popup::Refuse("No connection to the machine.");
+			Popup::Refuse(why);
 			return;
 		}
-		if (status != OM::PrinterStatus::idle)
-		{
-			refuse(status);
-			return;
-		}
-		const std::string path = fullDir() + name;
 		Popup::Confirm("ALERT !",
-					   {"Do you want to RUN", "this job?", name},
-					   [path, refuse]
+					   {"Do you want to RUN", "this job?", baseName(path)},
+					   [path]
 					   {
-						   if (State::JobInProgress())
+						   const std::string again = runRefusal(); // the machine may have changed meanwhile
+						   if (!again.empty())
 						   {
-							   Popup::Refuse("A job is already running.");
-							   return;
-						   }
-						   if (State::Status() != OM::PrinterStatus::idle)
-						   {
-							   refuse(State::Status());
+							   Popup::Refuse(again);
 							   return;
 						   }
 						   State::Send(fmt::format("M32 \"{:s}\"\n", path)); // the job name comes from the machine
+					   });
+	}
+
+	// ---- The JOB popup: PREVIEW or delete ----
+
+	void JobListPage::askAction(const std::string& name)
+	{
+		std::weak_ptr<bool> alive = m_alive;
+		Popup::ConfirmWithTrash(
+			"JOB",
+			{name, "", "Check: open in PREVIEW", "Trash: delete the file"},
+			[this, alive, name]
+			{
+				if (!alive.expired())
+				{
+					askDelete(name);
+				}
+			},
+			[this, alive]
+			{
+				if (!alive.expired() && m_previewRequest)
+				{
+					m_previewRequest();
+				}
+			});
+	}
+
+	void JobListPage::askDelete(const std::string& name)
+	{
+		const std::string path = fullDir() + name;
+		auto refused = [this, path]
+		{
+			if (State::JobActive() && path == m_jobFile)
+			{
+				Popup::Refuse("This job is running. It cannot be deleted.");
+				return true;
+			}
+			const OM::PrinterStatus status = State::Status();
+			if (status == OM::PrinterStatus::connecting || status == OM::PrinterStatus::disconnected)
+			{
+				Popup::Refuse("No connection to the machine.");
+				return true;
+			}
+			return false;
+		};
+		if (refused())
+		{
+			return;
+		}
+		std::weak_ptr<bool> alive = m_alive;
+		Popup::Confirm("DELETE",
+					   {"Delete this file?", name},
+					   [this, alive, path, name, refused]
+					   {
+						   if (alive.expired() || refused())
+						   {
+							   return;
+						   }
+						   State::Send(fmt::format("M30 \"{:s}\"\n", path));
+						   // Gone from the list at once; the machine's own listing follows
+						   m_entries.erase(std::remove_if(m_entries.begin(),
+														  m_entries.end(),
+														  [&name](const Entry& e)
+														  { return !e.folder && e.name == name; }),
+										   m_entries.end());
+						   if (m_selected == name)
+						   {
+							   m_selected.clear();
+						   }
+						   rebuildView();
+						   showRows();
+						   m_refreshAt = State::Now() + RefreshAfterDelete;
+						   if (m_refreshAt == 0)
+						   {
+							   m_refreshAt = 1;
+						   }
 					   });
 	}
 

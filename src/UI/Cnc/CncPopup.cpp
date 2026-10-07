@@ -54,6 +54,10 @@ namespace UI::Cnc::Popup
 		constexpr int32_t LinePitch = 36, LineH = 21;
 		constexpr int32_t ActW = 110, ActH = 78, ActY = 376;
 		constexpr int32_t CancelX = 110, OkX = 240, AloneX = (StdW - ActW) / 2;
+		// ConfirmWithTrash (Modern UI START PRINT): trash, X, check; three 110 x 78 tiles
+		constexpr int32_t TrashGap = 35;
+		constexpr int32_t TrashX = (StdW - (3 * ActW + 2 * TrashGap)) / 2; // 30
+		constexpr int32_t TrashCancelX = TrashX + ActW + TrashGap, TrashOkX = TrashCancelX + ActW + TrashGap;
 		constexpr int32_t WrapWidth = InfoW - 20; // 390 px of text in the info tile
 		constexpr size_t MaxLines = 6;
 		constexpr size_t MaxChoices = 9;
@@ -105,6 +109,7 @@ namespace UI::Cnc::Popup
 		std::string s_title;
 		std::vector<std::string> s_lines;
 		Handler s_onOk;
+		Handler s_onTrash;				  // ConfirmWithTrash: the trash can
 		Handler s_onCancel;				  // Message: X (M292 P1)
 		bool s_messageWithCancel = false; // Message: X and check, else the check alone, centred
 		bool s_messageWaits = false;	  // Message: the machine waits for an answer given in DWC
@@ -209,6 +214,7 @@ namespace UI::Cnc::Popup
 			s_pagePrev.reset();
 			s_pageNext.reset();
 			s_choiceButtons.clear(); // their LVGL objects go with the box
+			s_onTrash = nullptr;
 			s_formItems.clear();
 			s_okButton = nullptr;
 			s_keys.clear();
@@ -314,6 +320,37 @@ namespace UI::Cnc::Popup
 			return b;
 		}
 
+		// ConfirmWithTrash's trash button: cyan with a dark trash can (Modern UI START PRINT)
+		lv_obj_t* trashButton(int32_t x, int32_t y, int32_t w, int32_t h)
+		{
+			lv_obj_t* b = CreateBare(s_box, X(x), Y(y), W(x, w), H(y, h));
+			StyleCard(b, Colour::Cyan(), Colour::Border(), false);
+			lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
+			lv_obj_add_event_cb(
+				b,
+				[](lv_event_t* e)
+				{
+					lv_obj_t* obj = static_cast<lv_obj_t*>(lv_event_get_current_target(e));
+					lv_area_t a;
+					lv_obj_get_coords(obj, &a);
+					Pen pen(lv_event_get_layer(e), a.x1 + lv_area_get_width(&a) / 2, a.y1 + lv_area_get_height(&a) / 2);
+					DrawTrashIcon(pen, Colour::ButtonText(), Colour::Cyan());
+				},
+				LV_EVENT_DRAW_MAIN_END,
+				nullptr);
+			lv_obj_add_event_cb(
+				b,
+				[](lv_event_t*)
+				{
+					s_inEvent = true;
+					PressTrash();
+					s_inEvent = false;
+				},
+				LV_EVENT_CLICKED,
+				nullptr);
+			return b;
+		}
+
 		// ---- Standard popup ----
 
 		int32_t textWidth(const std::string& text, const lv_font_t* font)
@@ -416,10 +453,15 @@ namespace UI::Cnc::Popup
 			label(tx, TitleY, tw, TitleH, Font::Large(), Colour::Text(), LV_TEXT_ALIGN_CENTER, s_title.c_str());
 		}
 
-		void openStandard(Mode mode, std::string_view title, const std::vector<std::string>& lines, Handler onOk)
+		void openStandard(Mode mode,
+						  std::string_view title,
+						  const std::vector<std::string>& lines,
+						  Handler onOk,
+						  Handler onTrash = nullptr)
 		{
 			UI_LOCK();
 			openWindow(mode, StdX, StdY, StdW, StdH);
+			s_onTrash = std::move(onTrash);
 			s_lines.assign(lines.begin(), lines.begin() + (std::ptrdiff_t)std::min(lines.size(), MaxLines));
 			if (s_lines.empty())
 			{
@@ -444,7 +486,13 @@ namespace UI::Cnc::Popup
 					  s_lines[(size_t)i].c_str());
 			}
 
-			if (mode == Mode::Confirm || (mode == Mode::Message && s_messageWithCancel))
+			if (mode == Mode::Confirm && s_onTrash)
+			{
+				trashButton(TrashX, ActY, ActW, ActH);
+				actionButton(TrashCancelX, ActY, ActW, ActH, false);
+				actionButton(TrashOkX, ActY, ActW, ActH, true);
+			}
+			else if (mode == Mode::Confirm || (mode == Mode::Message && s_messageWithCancel))
 			{
 				actionButton(CancelX, ActY, ActW, ActH, false);
 				actionButton(OkX, ActY, ActW, ActH, true);
@@ -863,6 +911,12 @@ namespace UI::Cnc::Popup
 		openStandard(Mode::Confirm, title, lines, std::move(onOk));
 	}
 
+	void ConfirmWithTrash(std::string_view title, const std::vector<std::string>& lines, Handler onTrash, Handler onOk)
+	{
+		s_alertBackToNumpad = false;
+		openStandard(Mode::Confirm, title, lines, std::move(onOk), std::move(onTrash));
+	}
+
 	void Alert(std::string_view text)
 	{
 		s_alertBackToNumpad = false;
@@ -1228,6 +1282,22 @@ namespace UI::Cnc::Popup
 	size_t ChoiceSelected()
 	{
 		return s_pending;
+	}
+
+	bool HasTrash()
+	{
+		return s_mode == Mode::Confirm && s_onTrash != nullptr;
+	}
+
+	void PressTrash()
+	{
+		if (!HasTrash())
+		{
+			return;
+		}
+		Handler h = std::move(s_onTrash);
+		Close(); // close first: the handler may open the next page or popup
+		h();
 	}
 
 	void PressChoice(size_t index)

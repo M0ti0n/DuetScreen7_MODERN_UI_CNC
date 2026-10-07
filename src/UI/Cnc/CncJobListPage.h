@@ -12,8 +12,10 @@
  * Same behaviour as on PanelDue:
  *  - A fresh listing of the open folder each time JOB LIST is shown (folders first, then files).
  *    Paging and search work on that listing and send nothing to the machine.
- *  - Tap a file to select it, tap it again to run it ("ALERT !" confirmation, M32). Tap a folder to
- *    open it; ".." goes back up. Refused while a job runs, when not connected or not idle.
+ *  - Tap a file to select it, tap it again for the JOB popup (trash / X / check, as the Modern UI's
+ *    START PRINT): the check opens PREVIEW of the file, where its RUN tile starts it (an addition to
+ *    PanelDue, where the second tap ran it). The trash asks "DELETE" and deletes it (M30); refused
+ *    for the running job and without a connection. Tap a folder to open it; ".." goes back up.
  *  - SEARCH opens the keyboard; the list (files of the open folder) filters as you type
  *    (case-insensitive, the match in the accent colour). ENTER keeps the filter, X clears it, a tap
  *    on SEARCH while typing leaves the search, a tap on a row keeps the filter and acts on the row.
@@ -30,12 +32,17 @@
 #include "lvgl/lvgl.h"
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace UI::Cnc
 {
+	// "Do you want to RUN this job?" and M32 on the check mark; refused while a job runs, when not
+	// connected or not idle (also checked again on the check mark). PREVIEW's RUN tile uses it.
+	void AskRunJob(const std::string& path);
+
 	class JobListPage
 	{
 	  public:
@@ -56,6 +63,9 @@ namespace UI::Cnc
 		// parentTop = screen y of the parent's top edge (the page content area)
 		void create(lv_obj_t* parent, int32_t parentTop);
 		void setShown(bool shown);					// JOB LIST shown / left (closes the keyboard, keeps the filter)
+		void onPreviewRequest(std::function<void()> h) { m_previewRequest = std::move(h); }	// the check of the JOB popup
+		void setJobFile(const std::string& path) { m_jobFile = path; }	// job.file.fileName: cannot be deleted while it runs
+		static constexpr uint32_t RefreshAfterDelete = 600;		// ms: a fresh listing after M30
 
 		// Machine data (the listing callback; the tests call it directly)
 		void listingArrived(const std::string& dir, std::vector<Entry> entries);
@@ -100,12 +110,16 @@ namespace UI::Cnc
 		void updateLabel();
 		unsigned int visibleRows() const;
 		bool filterOn() const { return m_searching && !m_query.empty(); }
-		void askRun(const std::string& name);
+		void askAction(const std::string& name);	// the JOB popup: trash / X / check
+		void askDelete(const std::string& name);
 		void openKeyboard();
 		void keyboardGone();
 		void cancelSearch();
 
 		lv_obj_t* m_root = nullptr;
+		std::function<void()> m_previewRequest;
+		std::string m_jobFile;
+		uint32_t m_refreshAt = 0;					// State::Now() of the listing after a delete, 0 = none
 		int32_t m_top = 0;
 		lv_timer_t* m_timer = nullptr;
 		std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);	// listing callbacks after destruction

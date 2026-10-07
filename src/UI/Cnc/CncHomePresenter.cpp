@@ -83,6 +83,7 @@ namespace UI
 		ZoneScoped;
 		m_view->getJobStatusPage().setFileName(name);
 		m_view->getJobPreviewPage().setJobFile(name);
+		m_view->getJobListPage().setJobFile(name);
 	}
 
 	void CncHomePresenter::newJobProgress()

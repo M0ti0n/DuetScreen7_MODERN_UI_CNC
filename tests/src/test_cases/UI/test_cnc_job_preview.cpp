@@ -52,6 +52,7 @@ class TestCncJobPreview : public UiTestSuite
 		State::Reset();
 		Panel::Reset();
 		Panel::SetTestHook([](const std::string&) {});
+		State::SetSendHook([this](std::string_view g) { sent.emplace_back(g); });
 		PreviewSource::Reset();
 		PreviewSource::SetTestSource(
 			[this](const std::string& path, std::string& contents)
@@ -73,6 +74,7 @@ class TestCncJobPreview : public UiTestSuite
 		PreviewSource::SetTestSource(nullptr);
 		PreviewSource::Reset();
 		Panel::SetTestHook(nullptr);
+		State::SetSendHook(nullptr);
 	}
 
 	void makeView(const std::string& listPath)
@@ -100,6 +102,7 @@ class TestCncJobPreview : public UiTestSuite
 	std::string path;
 	int downloads = 0;
 	bool failDownload = false;
+	std::vector<std::string> sent;
 };
 
 // ---- Notices ----
@@ -119,6 +122,60 @@ TEST_F(TestCncJobPreview, NeedsNetwork)
 	EXPECT_EQ(page().message(), "PREVIEW needs a network connection to the machine (WiFi or Ethernet)");
 	EXPECT_EQ(page().fileText(), "bracket_fusion.nc");
 	EXPECT_TRUE(lv_test_screenshot_compare("cnc/preview_needs_network.png"));
+}
+
+// ---- RUN tile ----
+
+TEST_F(TestCncJobPreview, RunTile)
+{
+	makeView(FreeCad);
+	EXPECT_TRUE(page().runTileShown());
+	EXPECT_TRUE(page().runAvailable()); // idle, a file from JOB LIST: accent outline, play triangle
+	EXPECT_EQ(page().fileText(), "plate_freecad.nc");
+	EXPECT_TRUE(lv_test_screenshot_compare("cnc/preview_run_tile.png"));
+	page().pressRun();
+	EXPECT_EQ(Popup::Title(), "ALERT !");
+	EXPECT_EQ(Popup::Lines(), std::vector<std::string>({"Do you want to RUN", "this job?", "plate_freecad.nc"}));
+	Popup::PressOk();
+	ASSERT_FALSE(sent.empty());
+	EXPECT_EQ(sent.back(), "M32 \"0:/gcodes/plate_freecad.nc\"\n");
+}
+
+TEST_F(TestCncJobPreview, RunTileGreyWhenItCannotRun)
+{
+	makeView(FreeCad);
+	view->getPresenter()->newStatus(OM::PrinterStatus::busy);
+	page().tick();
+	EXPECT_TRUE(page().runTileShown());
+	EXPECT_FALSE(page().runAvailable()); // grey, no triangle
+	EXPECT_TRUE(lv_test_screenshot_compare("cnc/preview_run_tile_grey.png"));
+	page().pressRun();
+	std::string why;
+	for (const std::string& l : Popup::Lines())
+	{
+		why += (why.empty() ? "" : " ") + l;
+	}
+	EXPECT_EQ(why, "Wait until the machine is idle.");
+	Popup::Close();
+	view->getPresenter()->newStatus(OM::PrinterStatus::idle);
+	page().tick();
+	EXPECT_TRUE(page().runAvailable());
+	path = "";
+	page().tick();
+	EXPECT_FALSE(page().runTileShown()); // nothing selected: no tile
+	EXPECT_TRUE(sent.empty());
+}
+
+TEST_F(TestCncJobPreview, RunWithoutNetwork)
+{
+	PreviewSource::SetTestSource(nullptr); // no drawing possible (USB only), the job can still be started
+	makeView(Fusion);
+	EXPECT_TRUE(page().runAvailable());
+	EXPECT_EQ(page().fileText(), "bracket_fusion.nc");
+	page().pressRun();
+	Popup::PressOk();
+	ASSERT_FALSE(sent.empty());
+	EXPECT_EQ(sent.back(), "M32 \"0:/gcodes/bracket_fusion.nc\"\n");
 }
 
 TEST_F(TestCncJobPreview, FailureAndRetry)

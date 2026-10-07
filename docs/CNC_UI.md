@@ -42,6 +42,7 @@ What it does:
   (G10 P), tools T0..T3, spindle M3/M4/M5 (ramps up), M220, M290 babystepping.
 - Probing G38.2/G38.3 touches a fake stock top at machine Z-70 and edges at machine X150 / Y100.
 - Jobs (M32, M23 + M24): progress, time left, pause M25, resume M24, cancel M0, M0 in the file.
+  `M30 "file"` deletes a file (JOB LIST's trash).
 - Macros (M98) with meta commands: if/elif/else, while, var, global, set, echo (also to a file),
   abort, expressions like `{move.axes[2].userPosition + 1}`.
 - Machine messages M291 S0..S7 (choices, numbers, text) and the panel's M292 answers.
@@ -73,7 +74,7 @@ are close to RRF, not exact.
 | `src/UI/Cnc/CncWcsOffsetsPage.*` | WCS > OFFSETS: G54..G59, offset cells, ACTIVATE / COPY TO / SAVE / RESET / SHIFT / APPLY, OFFSET (babystep) column |
 | `src/UI/Cnc/CncWcsToolsPage.*` | WCS > TOOLS: tool list (paging), LOAD / MEASURE / SET Z |
 | `src/UI/Cnc/CncWcsProbePage.*` | WCS > PROBE: origin picker, mode tiles, RUN; auto probe progress popup, M291 jog prompt |
-| `src/UI/Cnc/CncJobListPage.*` | JOB > JOB LIST: file list (folders, paging), select + RUN, SEARCH |
+| `src/UI/Cnc/CncJobListPage.*` | JOB > JOB LIST: file list (folders, paging), select, JOB popup (PREVIEW / delete), SEARCH; `AskRunJob` (the RUN question) |
 | `src/UI/Cnc/CncJobPreviewPage.*` | JOB > PREVIEW: 3D view with ISO / G0 buttons, operation strip, info strip; running operation |
 | `src/UI/Cnc/CncPreviewView.*` | PREVIEW's 3D view: software line renderer into a canvas (stock box, toolpaths, presets, drag) |
 | `src/UI/Cnc/CncPreviewSource.*` | PREVIEW's file: HTTP download from the machine whatever the machine connection, read in the background |
@@ -93,7 +94,7 @@ are close to RRF, not exact.
 | `tests/src/test_cases/UI/test_cnc_control.cpp` | CONTROL: screenshots, G-code sent, refusals, job locks, idle timeout, DRO tiles |
 | `tests/src/test_cases/UI/test_cnc_wcs_offsets.cpp` | WCS > OFFSETS: screenshots, G-code sent, popups, job locks, unsaved tracking |
 | `tests/src/test_cases/UI/test_cnc_wcs_tools.cpp` | WCS > TOOLS: selection, paging, LOAD / MEASURE / SET Z, job locks |
-| `tests/src/test_cases/UI/test_cnc_job_list.cpp` | JOB > JOB LIST and the keyboard: listing, folders, RUN, search |
+| `tests/src/test_cases/UI/test_cnc_job_list.cpp` | JOB > JOB LIST and the keyboard: listing, folders, JOB popup, delete, RUN question, search |
 | `tests/src/test_cases/UI/test_cnc_macros.cpp` | MACROS: display names, list / grid, folders, RUN MACRO, search, SETTINGS pick |
 | `tests/src/test_cases/UI/test_cnc_alerts.cpp` | SYSTEM > ALERT: collecting, repeats, paging, ages, popup |
 | `tests/src/test_cases/UI/test_cnc_console.cpp` | SYSTEM > CONSOLE: log order and colours, wrapping, sending, history, draft |
@@ -148,16 +149,24 @@ not affected:
 | Machine replies (G-code responses) | done (as the PanelDue Modern UI): an "Error" reply as ALERT ! until X, other replies without a title, closing after INFO TIMEOUT (0 = not shown); the newest replaces the one shown; never over a popup in use or a prompt the machine waits for; not while SYSTEM is shown, not for a command typed in CONSOLE. Errors during a job: ALERT ! also over other popups |
 | Display messages (M117) | done: MESSAGE popup with the check mark, not over a popup in use or the keyboard; from the PanelDue push message (UART) and from `state.displayMessage` when it changes (USB / network), the same text shown once |
 | Machine messages (M291) | done: S0-S3 (message, OK, OK / cancel, jog prompt); S4 choices (header with the text, buttons in 3 / 2 / 1 columns as the longest fits, 4 choices as 2 x 2, < > pages for more than 4 rows, default selected); S5 / S6 numpad with header, the message's range, '.' / '-' only where allowed; S7 keyboard with header (modal): typing stops at the message's maximum length, too short gets an ALERT. X only with a cancel button (M292 P1). Answered elsewhere: closes. TOOL... prompts during a job: the JOB STATUS tool change row |
-| JOB > JOB LIST | done: listing (DuetScreen's cached listing shows at once, then refreshes), folders, select + RUN (M32), SEARCH with the keyboard, SD tile (only when another volume is mounted: next card, its root; back to card 0 when it is removed) |
+| JOB > JOB LIST | done: listing (DuetScreen's cached listing shows at once, then refreshes), folders, select, second tap: JOB popup (trash / X / check: delete with confirmation (M30), or open PREVIEW), SEARCH with the keyboard, SD tile (only when another volume is mounted: next card, its root; back to card 0 when it is removed) |
 | JOB > JOB STATUS | done: progress / DONE / ABORTED, times, per-tool FEED WORK (M220) and SPINDLE (emulated M3 / M4) overrides with numpad, COOLANT / CUSTOM 2 / 3, tool change row (M291 TOOL... prompt, automatic change), PAUSE / RESUME / ABORT, JOB DONE notice, errors during a job as ALERT !; opens by itself when a job starts or a tool change prompt arrives |
 | MACROS | done: list (11 rows) or grid (2 x 5), names without "!", "12_" and ".g", folders, RUN MACRO (M98, refused while a job runs, allowed while paused), SEARCH with the keyboard, pick mode for SETTINGS > CUSTOM n > MACRO |
 | SYSTEM > ALERT | done: Error: / Warning: lines of every reply, newest first, 5 pages of 10 (PanelDue: 11 on one page) with a page bar, age, unread dot, repeat of the newest only refreshes it, tap = ERROR / WARNING popup. Kept until power off |
 | SYSTEM > CONSOLE | done: 15-line log, newest message first, colours (command / reply / warning / error), word wrap, ages; keyboard sends and stays open, 5-command history, draft kept; 7 lines stay visible above the keyboard (PanelDue 6) |
 | SYSTEM > SETTINGS | done: page 1 SYSTEM (ACCENT COLOR (restarts the UI), BRIGHTNESS, INFO TIMEOUT, SCREEN DIMMING, SCREEN ROTATION, SOUND, CONNECTION, SPLIT OPERATIONS (PREVIEW: AUTO / TOOL CHANGES), ABOUT), page 2 CUSTOMIZATION (as PanelDue, plus IDLE TIMEOUT, JOG PRESETS, OVERRIDES), page 3 JOG DIRECTION (arrows and "°" on the MOVE buttons of CONTROL and the jog prompt), PROBE values saved, FACTORY RESET (screen / machine / both) |
-| JOB > PREVIEW | done (phase 1): toolpath lines in the stock box, selected operation in the accent colour, others dimmed; ISO / TOP / FRONT, drag to rotate, double tap = ISO; G0 shows the selected operation's rapids; operation strip (number, name in 2 rows of 7 letters, tool) with paging; info strip (full name, time, tool, Z range, S, F, coolant, WCS); running operation marked and followed. Info strip first row: [n NAME i] opens the info popup (X / Y and Z range, cut and rapid length, plunge feed, tool description); a warning button (amber triangle), only when needed, opens the WARNING(S) popup (each warning and its reason); a small triangle on an operation button marks its warnings (below the stock bottom, cutting with the spindle off, tool not in the tool table, outside the X / Y travel); the time has its own column; a rejected download password opens the keyboard (MACHINE PASSWORD). Later: material removal (height map), live tool position, read-only G-code view |
+| JOB > PREVIEW | done (phase 1): RUN tile (file name; accent outline and play triangle when the job can start, grey when not; RUN question, M32); toolpath lines in the stock box, selected operation in the accent colour, others dimmed; ISO / TOP / FRONT, drag to rotate, double tap = ISO; G0 shows the selected operation's rapids; operation strip (number, name in 2 rows of 7 letters, tool) with paging; info strip (full name, time, tool, Z range, S, F, coolant, WCS); running operation marked and followed. Info strip first row: [n NAME i] opens the info popup (X / Y and Z range, cut and rapid length, plunge feed, tool description); a warning button (amber triangle), only when needed, opens the WARNING(S) popup (each warning and its reason); a small triangle on an operation button marks its warnings (below the stock bottom, cutting with the spindle off, tool not in the tool table, outside the X / Y travel); the time has its own column; a rejected download password opens the keyboard (MACHINE PASSWORD). Later: material removal (height map), live tool position, read-only G-code view |
 | CNC settings from / to `global.cnc*` | done (SYSTEM > SETTINGS). config.g must run the file at power-on: `M98 P"0:/sys/cnc-settings.g"`; the globals are guarded in the file, so config.g need not declare them |
 
 ## JOB > PREVIEW
+
+**Starting a job.** In JOB LIST a tap selects a file, a second tap opens the JOB popup (trash / X /
+check, as the Modern UI's START PRINT popup): the trash asks "DELETE" and deletes the file (M30; not
+the running job), the check opens PREVIEW of the file. There the file name is the RUN tile: accent
+outline and a green play triangle when the job can start, grey without the triangle when it cannot
+(a job running, the machine not idle or not connected; a tap says why). A tap asks "Do you want to
+RUN this job?" and starts it (M32). The tile works also when the file cannot be drawn (no network),
+so a machine on USB only can still start jobs.
 
 **File download.** RRF cannot send a file's contents over UART or USB, so PREVIEW downloads the job
 file over the network, whatever the machine connection is: commands stay on USB (Duet3D's

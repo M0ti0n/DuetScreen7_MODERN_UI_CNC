@@ -3,6 +3,8 @@
  */
 
 #include "CncJobPreviewPage.h"
+#include "CncGlyphs.h"
+#include "CncJobListPage.h"
 #include "CncKeyboard.h"
 #include "CncLayout.h"
 #include "CncPanel.h"
@@ -105,11 +107,7 @@ namespace UI::Cnc
 		lv_obj_t* v = m_view.obj();
 		const int32_t inner = ViewW - 2 * CardBorder;
 		const int32_t bx = inner - OverlayInset - ButtonW;
-		m_fileLabel = CreateLabel(
-			v, OverlayInset, 8, bx - OverlayInset - 8, 30, Font::Small(), Colour::Text(), LV_TEXT_ALIGN_LEFT, "");
-		lv_label_set_long_mode(m_fileLabel, LV_LABEL_LONG_MODE_DOTS);
-		m_summaryLabel = CreateLabel(
-			v, OverlayInset, 40, bx - OverlayInset - 8, 24, Font::Tiny(), Colour::Muted(), LV_TEXT_ALIGN_LEFT, "");
+		createRunTile(v);
 		m_stockLabel = CreateLabel(v,
 								   inner - 300 - OverlayInset,
 								   ViewH - 2 * CardBorder - 34,
@@ -150,6 +148,91 @@ namespace UI::Cnc
 		m_timer = lv_timer_create(
 			[](lv_timer_t* t) { static_cast<JobPreviewPage*>(lv_timer_get_user_data(t))->tick(); }, 100, this);
 		apply(PreviewSource::Current());
+	}
+
+	// RUN tile: the file name and summary in a tile at the top left of the view; a tap asks to RUN it.
+	// Accent outline and a green play triangle when it can run, grey without the triangle when not.
+	void JobPreviewPage::createRunTile(lv_obj_t* view)
+	{
+		constexpr int32_t TileX = OverlayInset - 4, TileY = 5, TileH = ButtonH + 18; // 8, 5, 64
+		constexpr int32_t TextX = 52;												 // after the triangle
+		const int32_t inner = ViewW - 2 * CardBorder;
+		const int32_t bx = inner - OverlayInset - ButtonW; // ISO / G0 column
+		const int32_t tileW = bx - 6 - TileX;
+		const int32_t textW = tileW - 2 * CardBorder - TextX - 6;
+		m_runTile = CreateBare(view, TileX, TileY, tileW, TileH);
+		StyleCard(m_runTile, Colour::Tile(), Colour::Border());
+		lv_obj_add_flag(m_runTile, LV_OBJ_FLAG_CLICKABLE);
+		lv_obj_add_flag(m_runTile, LV_OBJ_FLAG_HIDDEN);
+		lv_obj_add_event_cb(
+			m_runTile,
+			[](lv_event_t* e) { static_cast<JobPreviewPage*>(lv_event_get_user_data(e))->pressRun(); },
+			LV_EVENT_CLICKED,
+			this);
+		lv_obj_add_event_cb(
+			m_runTile,
+			[](lv_event_t* e)
+			{
+				auto* page = static_cast<JobPreviewPage*>(lv_event_get_user_data(e));
+				if (page->m_runLook != RunReady)
+				{
+					return;
+				}
+				lv_obj_t* obj = static_cast<lv_obj_t*>(lv_event_get_current_target(e));
+				lv_area_t a;
+				lv_obj_get_coords(obj, &a);
+				Pen pen(lv_event_get_layer(e), a.x1 + 27, a.y1 + lv_area_get_height(&a) / 2);
+				DrawPlayIcon(pen, Colour::Green());
+			},
+			LV_EVENT_DRAW_MAIN_END,
+			this);
+		m_fileLabel =
+			CreateLabel(m_runTile, TextX, 2, textW, 30, Font::Small(), Colour::Text(), LV_TEXT_ALIGN_LEFT, "");
+		lv_label_set_long_mode(m_fileLabel, LV_LABEL_LONG_MODE_DOTS);
+		m_summaryLabel =
+			CreateLabel(m_runTile, TextX, 32, textW, 24, Font::Tiny(), Colour::Muted(), LV_TEXT_ALIGN_LEFT, "");
+		lv_obj_remove_flag(m_fileLabel, LV_OBJ_FLAG_CLICKABLE);
+		lv_obj_remove_flag(m_summaryLabel, LV_OBJ_FLAG_CLICKABLE);
+	}
+
+	void JobPreviewPage::updateRunTile()
+	{
+		const std::string path = wantedPath();
+		const bool canRun = !path.empty() && !State::JobInProgress() && !State::JobActive() &&
+							State::Status() == OM::PrinterStatus::idle;
+		const int look = path.empty() ? RunHidden : canRun ? RunReady : RunGrey;
+		if (look == m_runLook && path == m_runPath)
+		{
+			return;
+		}
+		UI_LOCK();
+		m_runLook = look;
+		m_runPath = path;
+		if (look == RunHidden)
+		{
+			lv_obj_add_flag(m_runTile, LV_OBJ_FLAG_HIDDEN);
+			return;
+		}
+		lv_obj_remove_flag(m_runTile, LV_OBJ_FLAG_HIDDEN);
+		StyleCard(m_runTile, Colour::Tile(), (look == RunReady) ? Colour::Accent() : Colour::Border());
+		lv_obj_set_style_text_color(m_fileLabel, (look == RunReady) ? Colour::Text() : Colour::Muted(), 0);
+		lv_label_set_text(m_fileLabel, fileName(path).c_str()); // also when the file cannot be drawn
+		lv_obj_invalidate(m_runTile);
+	}
+
+	void JobPreviewPage::pressRun()
+	{
+		const std::string path = wantedPath();
+		if (path.empty())
+		{
+			return;
+		}
+		if (State::JobActive() && path == m_jobFile)
+		{
+			Popup::Refuse("A job is already running.");
+			return;
+		}
+		AskRunJob(path); // the reason when it cannot start now
 	}
 
 	void JobPreviewPage::createStrip(lv_obj_t* root)
@@ -358,6 +441,7 @@ namespace UI::Cnc
 			m_generation = PreviewSource::Generation();
 			apply(PreviewSource::Current());
 		}
+		updateRunTile();
 	}
 
 	void JobPreviewPage::apply(const PreviewSource::Result& r)
