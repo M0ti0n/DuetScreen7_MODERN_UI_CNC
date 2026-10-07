@@ -60,13 +60,13 @@ namespace UI::Cnc::Panel
 		}
 
 		template <typename K>
-		unsigned int get(const K& key, unsigned int TestValues::*field)
+		unsigned int get(const K& key, unsigned int TestValues::* field)
 		{
 			return s_hook ? s_test.*field : (unsigned int)StorageHelper::getData(key);
 		}
 
 		template <typename K>
-		void set(const K& key, unsigned int TestValues::*field, unsigned int value)
+		void set(const K& key, unsigned int TestValues::* field, unsigned int value)
 		{
 			if (s_hook)
 			{
