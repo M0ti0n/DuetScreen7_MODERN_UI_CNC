@@ -75,8 +75,9 @@ are close to RRF, not exact.
 | `src/UI/Cnc/CncWcsToolsPage.*` | WCS > TOOLS: tool list (paging), LOAD / MEASURE / SET Z |
 | `src/UI/Cnc/CncWcsProbePage.*` | WCS > PROBE: origin picker, mode tiles, RUN; auto probe progress popup, M291 jog prompt |
 | `src/UI/Cnc/CncJobListPage.*` | JOB > JOB LIST: file list (folders, paging), select, JOB popup (PREVIEW / delete), SEARCH; `AskRunJob` (the RUN question) |
-| `src/UI/Cnc/CncJobPreviewPage.*` | JOB > PREVIEW: 3D view with ISO / G0 buttons, operation strip, info strip; running operation |
-| `src/UI/Cnc/CncPreviewView.*` | PREVIEW's 3D view: software line renderer into a canvas (stock box, toolpaths, presets, drag) |
+| `src/UI/Cnc/CncJobPreviewPage.*` | JOB > PREVIEW: 3D view with view / G0 / PART buttons, cut label, operation strip, info strip; running operation |
+| `src/UI/Cnc/CncPreviewView.*` | PREVIEW's 3D view: software renderer into a canvas (stock box, toolpaths, presets, drag; PART: glass part, TOP depth, FRONT / SIDE drawing, CUT X / CUT Y sections; tap to place the cut) |
+| `src/UI/Cnc/CncStockSim.*` | PREVIEW's PART: height-map material removal (flat / ball end swept per move) and the hidden features of the drawings |
 | `src/UI/Cnc/CncPreviewSource.*` | PREVIEW's file: HTTP download from the machine whatever the machine connection, read in the background |
 | `src/UI/Cnc/CncGcode.*` | G-code reader: moves and arcs, operations (Fusion 360 / FreeCAD comments, tool changes), tools, stock, times, short names |
 | `src/UI/Cnc/CncJobStatusPage.*` | JOB > JOB STATUS: progress, times, per-tool FEED / SPINDLE overrides, PAUSE / RESUME / ABORT, tool change row |
@@ -100,7 +101,8 @@ are close to RRF, not exact.
 | `tests/src/test_cases/UI/test_cnc_console.cpp` | SYSTEM > CONSOLE: log order and colours, wrapping, sending, history, draft |
 | `tests/src/test_cases/UI/test_cnc_settings.cpp` | SYSTEM > SETTINGS: globals in / out, file writing, pages, CUSTOM pick, presets, overrides, probe values, jog arrows, sound, factory reset |
 | `tests/src/test_cases/UI/test_cnc_gcode.cpp` | G-code reader: operations, tools, stock, arcs, G20 / G91 / G53, merging, short names |
-| `tests/src/test_cases/UI/test_cnc_job_preview.cpp` | JOB > PREVIEW: notices, operations, paging, info, view presets, G0, running job; a manual real-HTTP test |
+| `tests/src/test_cases/UI/test_cnc_job_preview.cpp` | JOB > PREVIEW: notices, operations, paging, info, view presets, G0, PART views, cut point and sections, running job, the next job during a job and PREVIEW IN JOB, warnings in the RUN question; a manual real-HTTP test |
+| `tests/src/test_cases/UI/test_cnc_stock_sim.cpp` | PART's simulation: the bracket operation by operation, flat and ball footprints, features, timing |
 | `tests/src/test_cases/UI/test_cnc_job_status.cpp` | JOB > JOB STATUS: job start / end, overrides, spindle emulation, PAUSE / ABORT, tool change row, errors |
 | `tests/src/test_cases/UI/test_cnc_wcs_probe.cpp` | WCS > PROBE and M291 messages: macros, auto probe popup, jog prompts, message popups |
 | `tests/src/test_cases/UI/test_cnc_splash.cpp` | Splash: look (orange, blue, with test logos), 3 s timeout, touch closes, skipped after the UI's own restart |
@@ -134,6 +136,22 @@ not affected:
 - Each screen is checked against the PanelDue reference screenshots (PanelDue screen x 1.25,
   nav bar anchored to the bottom; the panel's extra 24 px go to the page content).
 
+## Robustness notes
+
+- **Threads.** Object model subscribers run on the receive thread (USB decode / HTTP). CNC subscribers
+  (M117 / push messages, `global.cnc*` settings, M300 beeps) queue their work with `State::RunOnUi`; the
+  home view runs the queue on the UI thread every 20 ms. They never take the UI lock on the receive thread:
+  a USB reconnect on the UI thread (which holds that lock) joins the receive thread.
+- **RRF `starting`** (the firmware starting up, config.g) is not a job (PanelDue: configuring).
+- **File names in G-code strings** (M32, M30, M98): `"` and `'` are doubled (RRF: a single `'` makes the
+  next letter lowercase), so `Bob's part.nc` works.
+- **Restart** (ACCENT COLOR, FACTORY RESET): the panel restarts its service; the simulator starts the
+  program again in place (`exec`), as `exit()` with the communication threads running ends in
+  `std::terminate`. FACTORY RESET with the machine settings restarts only once their file is written.
+- **Numpad**: at most 3 decimals can be typed (what is sent and saved).
+- **G-code reader**: Fusion's `D=` tool diameters are inches in a G20 program; S / F of other commands (G4 S,
+  M42 S, M106 S, M568 F) are not the spindle speed / feed; an R arc ending where it starts is a straight move.
+
 ## Status
 
 | Part | State |
@@ -147,15 +165,15 @@ not affected:
 | WCS > TOOLS | done, with its popups (IS T# IN THE SPINDLE?, tool change and MEASURE confirm, SET Z numpad) |
 | WCS > PROBE | done: AUTO / SEMI-AUTO / MANUAL, auto probe progress popup, M291 jog prompt (PROBE / READ / OK) |
 | Machine replies (G-code responses) | done (as the PanelDue Modern UI): an "Error" reply as ALERT ! until X, other replies without a title, closing after INFO TIMEOUT (0 = not shown); the newest replaces the one shown; never over a popup in use or a prompt the machine waits for; not while SYSTEM is shown, not for a command typed in CONSOLE. Errors during a job: ALERT ! also over other popups |
-| Display messages (M117) | done: MESSAGE popup with the check mark, not over a popup in use or the keyboard; from the PanelDue push message (UART) and from `state.displayMessage` when it changes (USB / network), the same text shown once |
-| Machine messages (M291) | done: S0-S3 (message, OK, OK / cancel, jog prompt); S4 choices (header with the text, buttons in 3 / 2 / 1 columns as the longest fits, 4 choices as 2 x 2, < > pages for more than 4 rows, default selected); S5 / S6 numpad with header, the message's range, '.' / '-' only where allowed; S7 keyboard with header (modal): typing stops at the message's maximum length, too short gets an ALERT. X only with a cancel button (M292 P1). Answered elsewhere: closes. TOOL... prompts during a job: the JOB STATUS tool change row |
+| Display messages (M117) | done: MESSAGE popup with the check mark, not over a popup in use or the keyboard; from the PanelDue push message (UART) and from `state.displayMessage` when it changes (USB / network), the same text shown once; it stays until its check mark (or INFO TIMEOUT), also when the machine reports no message box |
+| Machine messages (M291) | done: S0-S3 (message, OK, OK / cancel, jog prompt); S4 choices (header with the text, buttons in 3 / 2 / 1 columns as the longest fits, 4 choices as 2 x 2, < > pages for more than 4 rows, default selected); S5 / S6 numpad with header, the message's range, '.' / '-' only where allowed; S7 keyboard with header (modal): typing stops at the message's maximum length, too short gets an ALERT. X only with a cancel button (M292 P1). Answered elsewhere: closes (only the box's own popups: an M117 MESSAGE or JOB DONE stays). TOOL... prompts during a job: the JOB STATUS tool change row |
 | JOB > JOB LIST | done: listing (DuetScreen's cached listing shows at once, then refreshes), folders, select, second tap: JOB popup (trash / X / check: delete with confirmation (M30), or open PREVIEW), SEARCH with the keyboard, SD tile (only when another volume is mounted: next card, its root; back to card 0 when it is removed) |
-| JOB > JOB STATUS | done: progress / DONE / ABORTED, times, per-tool FEED WORK (M220) and SPINDLE (emulated M3 / M4) overrides with numpad, COOLANT / CUSTOM 2 / 3, tool change row (M291 TOOL... prompt, automatic change), PAUSE / RESUME / ABORT, JOB DONE notice, errors during a job as ALERT !; opens by itself when a job starts or a tool change prompt arrives |
+| JOB > JOB STATUS | done: progress / DONE / ABORTED, times, per-tool FEED WORK (M220) and SPINDLE (emulated M3 / M4) overrides with numpad, COOLANT / CUSTOM 2 / 3, tool change row (M291 TOOL... prompt, automatic change), PAUSE / RESUME / ABORT (ABORT pauses first, then M0; paused: M0 at once; while pausing: that pause; while resuming: paused once it runs again), JOB DONE notice, errors during a job as ALERT !; opens by itself when a job starts or a tool change prompt arrives |
 | MACROS | done: list (11 rows) or grid (2 x 5), names without "!", "12_" and ".g", folders, RUN MACRO (M98, refused while a job runs, allowed while paused), SEARCH with the keyboard, pick mode for SETTINGS > CUSTOM n > MACRO |
 | SYSTEM > ALERT | done: Error: / Warning: lines of every reply, newest first, 5 pages of 10 (PanelDue: 11 on one page) with a page bar, age, unread dot, repeat of the newest only refreshes it, tap = ERROR / WARNING popup. Kept until power off |
 | SYSTEM > CONSOLE | done: 15-line log, newest message first, colours (command / reply / warning / error), word wrap, ages; keyboard sends and stays open, 5-command history, draft kept; 7 lines stay visible above the keyboard (PanelDue 6) |
-| SYSTEM > SETTINGS | done: page 1 SYSTEM (ACCENT COLOR (restarts the UI), BRIGHTNESS, INFO TIMEOUT, SCREEN DIMMING, SCREEN ROTATION, SOUND, CONNECTION, SPLIT OPERATIONS (PREVIEW: AUTO / TOOL CHANGES), ABOUT), page 2 CUSTOMIZATION (as PanelDue, plus IDLE TIMEOUT, JOG PRESETS, OVERRIDES), page 3 JOG DIRECTION (arrows and "°" on the MOVE buttons of CONTROL and the jog prompt), PROBE values saved, FACTORY RESET (screen / machine / both) |
-| JOB > PREVIEW | done (phase 1): RUN tile (file name; accent outline and play triangle when the job can start, grey when not; RUN question, M32); toolpath lines in the stock box, selected operation in the accent colour, others dimmed; ISO / TOP / FRONT, drag to rotate, double tap = ISO; G0 shows the selected operation's rapids; operation strip (number, name in 2 rows of 7 letters, tool) with paging; info strip (full name, time, tool, Z range, S, F, coolant, WCS); running operation marked and followed. Info strip first row: [n NAME i] opens the info popup (X / Y and Z range, cut and rapid length, plunge feed, tool description); a warning button (amber triangle), only when needed, opens the WARNING(S) popup (each warning and its reason); a small triangle on an operation button marks its warnings (below the stock bottom, cutting with the spindle off, tool not in the tool table, outside the X / Y travel); the time has its own column; a rejected download password opens the keyboard (MACHINE PASSWORD). Later: material removal (height map), live tool position, read-only G-code view |
+| SYSTEM > SETTINGS | done: page 1 SYSTEM (ACCENT COLOR (restarts the UI), BRIGHTNESS, INFO TIMEOUT, SCREEN DIMMING, SCREEN ROTATION, SOUND, CONNECTION, SPLIT OPERATIONS (PREVIEW: AUTO / TOOL CHANGES), PREVIEW IN JOB (ANY FILE / RUNNING JOB / OFF), ABOUT), page 2 CUSTOMIZATION (as PanelDue, plus IDLE TIMEOUT, JOG PRESETS, OVERRIDES), page 3 JOG DIRECTION (arrows and "°" on the MOVE buttons of CONTROL and the jog prompt), PROBE values saved, FACTORY RESET (screen / machine / both) |
+| JOB > PREVIEW | done (phase 1 + 2): RUN tile (file name; accent outline and play triangle when the job can start, grey when not; RUN question, M32); toolpath lines in the stock box, selected operation in the accent colour, others dimmed; view button ISO / TOP / FRONT / SIDE, drag to rotate, double tap = ISO; PART: the simulated part up to the selected operation (ISO glass, TOP depth-shaded, FRONT / SIDE drawing with hidden outlines); a tap on a cutting line places the cut point and selects its operation, FRONT / SIDE then become the sections CUT X / CUT Y; G0 shows the selected operation's rapids; operation strip (number, name in 2 rows of 7 letters, tool) with paging; info strip (full name, time, tool, Z range, S, F, coolant, WCS); running operation marked and followed, its moves already run in grey, PART up to the finished operations; during a job another file can be opened from JOB LIST (RUNNING goes back; SETTINGS > PREVIEW IN JOB). Info strip first row: [n NAME i] opens the info popup (X / Y and Z range, cut and rapid length, plunge feed, tool description); a warning button (amber triangle), only when needed, opens the WARNING(S) popup (each warning and its reason); a small triangle on an operation button marks its warnings (below the stock bottom, cutting with the spindle off, tool not in the tool table, outside the X / Y travel); the time has its own column; a rejected download password opens the keyboard (MACHINE PASSWORD); the RUN question shows the warnings (serious ones asked again). the machine's tool shown over the drawing (in the selected operation's work offset). Later: read-only G-code view |
 | CNC settings from / to `global.cnc*` | done (SYSTEM > SETTINGS). config.g must run the file at power-on: `M98 P"0:/sys/cnc-settings.g"`; the globals are guarded in the file, so config.g need not declare them |
 
 ## JOB > PREVIEW
@@ -168,12 +186,34 @@ outline and a green play triangle when the job can start, grey without the trian
 RUN this job?" and starts it (M32). The tile works also when the file cannot be drawn (no network),
 so a machine on USB only can still start jobs.
 
+**During a job.** PREVIEW follows the running job: its operation is marked and selected (a pick by hand
+stays for 15 s). Its moves already run turn grey as the job goes on (job.filePosition; only the new
+moves are drawn, the view is not drawn again); with PART on the part shows the operations finished so
+far, the running one is added when it is finished. SETTINGS > PREVIEW IN JOB decides what else it may show while the job runs:
+
+| Setting | During a job |
+| --- | --- |
+| ANY FILE (default) | The JOB popup's check opens another file (the next job) in PREVIEW, downloaded when it is opened. Its RUN tile is grey; the RUNNING button (under PART) goes back to the running job. |
+| RUNNING JOB | Only the running job. The JOB popup's check is grey for other files; a tap says why. |
+| OFF | No download from the machine while a job runs. A file PREVIEW already holds is shown (the job opened in PREVIEW before RUN); otherwise "PREVIEW is off while a job runs". The JOB popup's check is grey for other files. |
+
+When the job ends (or a new one starts), PREVIEW shows JOB LIST's file again (or follows the new job).
+The file shown before the current one stays in memory (files up to 1 000 000 points, about 16 MB), so
+switching between the running job and the next one downloads nothing. Deleting a file drops it.
+
+The machine only serves the file (as DWC's own downloads and G-code viewer do); reading, simulating and
+drawing run on the screen. On a Duet 2 WiFi a download during a job may be slower; OFF avoids
+downloads during jobs altogether.
+
 **File download.** RRF cannot send a file's contents over UART or USB, so PREVIEW downloads the job
 file over the network, whatever the machine connection is: commands stay on USB (Duet3D's
 recommendation), the file comes from the address the machine reports (`network.interfaces[].actualIP`)
 with `rr_connect` / `rr_download` / `rr_disconnect`; with a NETWORK connection, from that address. The
 password is DuetScreen's own setting (`duet:password`), RRF's default `reprap` when not set. DSF (SBC
-mode) answers the same requests. No address: "PREVIEW needs a network connection". Files up to 32 MB;
+mode) answers the same requests. No address: "PREVIEW needs a network connection". Files up to 32 MB: a
+larger one (size from JOB LIST) is refused before anything is downloaded; the download may take 30 s plus 1 s
+per 100 KB (a slow Duet 2 WiFi). A file uploaded again under the same name (another size or date in JOB
+LIST) is read again when it is opened again with the JOB popup's check;
 very large files are thinned (tiny moves merged) and drawn thinner while dragging.
 
 **What the G-code should contain** (all optional):
@@ -185,6 +225,7 @@ very large files are thinned (tiny moves merged) and drawn thinner while draggin
   operation has not cut with, right after a retract to its highest Z. Pieces are called "T2 (1)",
   "T2 (2)". These are guesses: SETTINGS > SPLIT OPERATIONS: TOOL CHANGES turns them (and splits by
   name within one tool) off.
+- Tools the job creates itself: `M563 P5 ...` in the file (not reported as missing from the tool table).
 - Tools: Fusion's header lines `(T1  D=6 CR=0 - ZMIN=-5 - flat end mill)`, or `;CNC_TOOL T1 D=6 TYPE=FLAT`,
   or `(T1: 6mm Endmill)`. Without them the info strip shows the tool number only.
 - Stock: `;CNC_STOCK X=120 Y=80 Z=20` (optionally `X0= Y0= Z0=`: corner at minimum X / Y and the top Z,
@@ -192,13 +233,57 @@ very large files are thinned (tiny moves merged) and drawn thinner while draggin
 
 **Warnings** (a small triangle on the operation button, the warning button in the info strip, the reasons in the WARNING popup):
 below the stock bottom (needs `;CNC_STOCK`), cutting moves before M3 / M4, a tool number not in the
-machine's tool table, X / Y outside the axis limits with the work offset of the operation's WCS (rapids
-count; Z is not checked: it depends on the tool length offset).
+machine's tool table (unless the file creates it itself with `M563 P<n>`), X / Y outside the axis
+limits with the work offset of the operation's WCS (rapids count; Z is not checked: it depends on the
+tool length offset).
+
+**Warnings and RUN.** Warnings never block a job. With warnings, the RUN question has the warning look
+(amber WARNING title) and names the operations ("Warning: operation 3"). The two that are almost always
+real mistakes, cutting with the spindle off and a tool the machine does not have, ask once more after
+the check mark ("Op 3: T5 not in the tool table" ... "RUN anyway?"). Below the stock bottom and outside
+the travel are information only (often intended: a through cut, a work zero still to be set). A file
+PREVIEW could not read (no network) gets the plain question: nothing is known about it.
+
+**Views.** The view button goes ISO > TOP > FRONT > SIDE > ISO (a dragged view: back to ISO); a double
+tap anywhere also goes back to ISO. G0 shows the selected operation's rapids.
+
+**PART** (under G0, on by default): the part as it is after the selected operation, simulated from the
+toolpaths on a height map of the stock (`;CNC_STOCK`, else the toolpath box; 0.25 mm cells, coarser for
+large stock, at most 250 000 cells). Each cutting move sweeps the tool (its diameter from the tool
+lines, else 3 mm; a ball end when the tool's type says BALL; V-bits are drawn as flat). The selected
+operation's path stays on top, the others are dimmed.
+- Tool shapes: flat end mill; ball end (BALL in the tool's type); pointed tools as a cone: V-bit,
+  chamfer, engraver (Fusion `TAPER=45deg` = 90°, `;CNC_TOOL T3 TYPE=VBIT A=60`, or "60°" in the
+  description; else 90°), drills (Fusion `TAPER=118deg`; else 118°).
+- ISO: see-through glass part with its edges, so the paths inside pockets and holes stay visible.
+- TOP: depth-shaded (deeper is darker).
+- FRONT / SIDE: a drawing. Visible edges solid, each pocket / hole inside the part as its own dashed
+  hidden outline (holes behind each other stay separate).
+
+**Tool position.** A small marker (shank and tip) shows where the machine's tool is, when the active
+work offset is the selected operation's (the drawing is in its coordinates): before RUN a quick check of
+the zero, during the job the tool moving along. It is a separate object over the drawing, so moving it
+does not draw the view again.
+
+**Cut point and sections.** A tap on a cutting (feed) line places the cut point (a crosshair) and
+selects that line's operation; a tap on an empty spot removes it. A double tap goes back to ISO and keeps
+the point. With a point, the view button shows CUT X and CUT Y instead of FRONT and SIDE: sections
+through the point along X (seen from the front) and along Y (from the side), labelled at the top left
+e.g. `CUT X · Y 15`. The cut face is hatched, the part behind it is drawn faintly, and the selected
+operation's moves near the plane are shown. Sections show the simulated part also with PART off. A new
+file removes the point.
+
+The simulation runs when PART or a section is first shown and continues operation by operation (the
+bracket test file: about 20 ms on a PC).
 
 **Password**: when the machine rejects the download password, tap the notice and type it; it is kept in
 DuetScreen's password setting and the download is tried again.
 
-To be checked on hardware: render speed on the T113 (drag), USB command channel plus network
+Checking downloads without the panel: `python3 scripts/fake_duet.py --slow 300` sends files at 300 KB/s
+(a Duet 2 WiFi). The log shows each download: `PREVIEW: <file>: <bytes> bytes downloaded in <ms> ms, read in
+<ms> ms (<points> points)`.
+
+To be checked on hardware: render speed on the T113 (drag; PART frames: about 9 ms on a PC, so around 90 ms there), USB command channel plus network
 download side by side, the download in SBC mode.
 
 ## Start-up splash

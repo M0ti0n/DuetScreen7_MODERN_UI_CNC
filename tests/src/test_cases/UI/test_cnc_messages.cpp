@@ -227,6 +227,32 @@ TEST_F(TestCncMessages, DisplayMessagePopup)
 	EXPECT_EQ(Popup::Title(), "HOME ALL");
 }
 
+// The machine reports "no message box" with every state update: that closes only a box's own popup,
+// never an M117 MESSAGE (or JOB DONE)
+TEST_F(TestCncMessages, NoBoxClosesOnlyTheBoxPopup)
+{
+	makeView();
+	Messages::DisplayMessage("Roughing done", true);
+	ASSERT_TRUE(Popup::IsMessageOpen());
+	Messages::Process(prompt(M::None, 0, "", ""));
+	EXPECT_TRUE(Popup::IsMessageOpen()); // stays
+	EXPECT_FALSE(Popup::IsMachineBoxOpen());
+	Popup::Close();
+
+	Messages::Process(prompt(M::InfoConfirm, 7, "CHECK", "Is the clamp tight?"));
+	EXPECT_TRUE(Popup::IsMachineBoxOpen());
+	Messages::Process(prompt(M::None, 0, "", "")); // answered in DWC
+	EXPECT_FALSE(Popup::IsOpen());
+
+	// A popup of the panel's own after a box: not closed either
+	Messages::Process(prompt(M::Info, 8, "INFO", "Spindle warming up"));
+	EXPECT_TRUE(Popup::IsMachineBoxOpen());
+	Popup::Close();
+	Popup::Message("JOB DONE", "bracket.nc", false, nullptr, nullptr, false, true);
+	Messages::Process(prompt(M::None, 0, "", ""));
+	EXPECT_EQ(Popup::Title(), "JOB DONE");
+}
+
 // ---- M291 S4: choices ----
 
 TEST_F(TestCncMessages, ChoicePrompt)
@@ -410,4 +436,22 @@ TEST_F(TestCncMessages, PromptClosedWhenAnsweredElsewhere)
 	ASSERT_TRUE(Popup::IsChooseOpen());
 	Messages::Process(prompt(M::None, 13, "", ""));
 	EXPECT_FALSE(Popup::IsOpen());
+}
+
+// The numpad takes at most 3 decimals (what is sent and saved)
+TEST_F(TestCncMessages, NumpadTakesThreeDecimals)
+{
+	makeView();
+	auto m = prompt(M::NumberFloat, 12, "TIP", "Probe tip");
+	m.floatMin = 0.0f;
+	m.floatMax = 20.0f;
+	m.floatDefault = 2.0f;
+	Messages::Process(m);
+	for (char c : std::string("2.00049"))
+	{
+		Popup::NumpadKey(c);
+	}
+	EXPECT_EQ(Popup::NumpadValue(), "2.000");
+	Popup::PressOk();
+	EXPECT_EQ(last(), "M292 R{2} S12\n");
 }

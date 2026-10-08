@@ -12,6 +12,7 @@
 #include "UI/Cnc/CncHomeView.h"
 #include "UI/Cnc/CncKeyboard.h"
 #include "UI/Cnc/CncLayout.h"
+#include "UI/Cnc/CncPanel.h"
 #include "UI/Cnc/CncPopup.h"
 #include "UI/Cnc/CncState.h"
 #include "test_utils/UiTestSuite.h"
@@ -169,6 +170,71 @@ TEST_F(TestCncJobList, TapSelectsSecondTapAsks)
 	EXPECT_TRUE(sent.empty());
 	EXPECT_EQ(view->getSubTab(UI::CncHomeView::PageJob), (unsigned int)UI::CncHomeView::JobPreviewTab);
 	EXPECT_EQ(page.selectedPath(), "0:/gcodes/bracket_v2.gcode");
+}
+
+// SETTINGS > PREVIEW IN JOB: while a job runs, the check opens another file only with ANY FILE
+TEST_F(TestCncJobList, PreviewDuringAJobFollowsTheSetting)
+{
+	Panel::SetTestHook([](const std::string&) {});
+	auto view = makeView();
+	auto& page = view->getJobListPage();
+	page.setJobFile("0:/gcodes/faceplate.nc"); // as the presenter does for both pages
+	view->getJobPreviewPage().setJobFile("0:/gcodes/faceplate.nc");
+	State::StatusChanged(OM::PrinterStatus::processing);
+	view->showSubTab(UI::CncHomeView::JobListTab);
+
+	// ANY FILE (default): another file opens in PREVIEW
+	page.rowPressed(1);
+	page.rowPressed(1);
+	EXPECT_FALSE(Popup::OkGreyed());
+	Popup::PressOk();
+	EXPECT_EQ(view->getSubTab(UI::CncHomeView::PageJob), (unsigned int)UI::CncHomeView::JobPreviewTab);
+	EXPECT_EQ(view->getJobPreviewPage().shownPath(), "0:/gcodes/bracket_v2.gcode");
+
+	// RUNNING JOB: the check is grey and says why
+	Panel::SetPreviewDuringJob(Panel::PreviewInJob::RunningJob);
+	EXPECT_EQ(view->getJobPreviewPage().shownPath(), "0:/gcodes/faceplate.nc");
+	view->showSubTab(UI::CncHomeView::JobListTab);
+	page.rowPressed(1);
+	EXPECT_EQ(Popup::Lines(),
+			  Lines({"bracket_v2.gcode", "", "PREVIEW: not during this job", "Trash: delete the file"}));
+	EXPECT_TRUE(Popup::OkGreyed());
+	EXPECT_TRUE(lv_test_screenshot_compare("cnc/job_list_job_popup_grey.png"));
+	Popup::PressOk();
+	EXPECT_EQ(Popup::Title(), "ALERT !");
+	EXPECT_EQ(text(), "While a job runs, PREVIEW shows only that job. (SETTINGS > PREVIEW IN JOB)");
+	Popup::Close();
+	EXPECT_EQ(view->getSubTab(UI::CncHomeView::PageJob), (unsigned int)UI::CncHomeView::JobListTab);
+
+	// OFF: the same, its own reason; the running job itself still opens
+	Panel::SetPreviewDuringJob(Panel::PreviewInJob::Off);
+	page.rowPressed(1);
+	Popup::PressOk();
+	EXPECT_EQ(text(), "PREVIEW is off while a job runs. (SETTINGS > PREVIEW IN JOB)");
+	Popup::Close();
+	page.rowPressed(2);
+	EXPECT_EQ(page.selectedName(), "faceplate.nc");
+	page.rowPressed(2);
+	EXPECT_FALSE(Popup::OkGreyed());
+	Popup::Close();
+
+	// The job ends: every file again
+	State::StatusChanged(OM::PrinterStatus::idle);
+	page.rowPressed(1);
+	page.rowPressed(1);
+	EXPECT_FALSE(Popup::OkGreyed());
+	Popup::Close();
+	Panel::SetTestHook(nullptr);
+}
+
+// RRF: inside "..." a single ' makes the next letter lowercase; '' is one apostrophe
+TEST_F(TestCncJobList, ApostropheInFileNames)
+{
+	auto view = makeView();
+	AskRunJob("0:/gcodes/Bob's part.nc");
+	Popup::PressOk();
+	EXPECT_EQ(last(), "M32 \"0:/gcodes/Bob''s part.nc\"\n");
+	EXPECT_EQ(State::Quoted("a\"b'c"), "a\"\"b''c");
 }
 
 TEST_F(TestCncJobList, DeleteAfterConfirm)

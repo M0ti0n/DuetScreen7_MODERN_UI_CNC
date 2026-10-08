@@ -45,6 +45,8 @@ namespace UI
 
 		CncHomeView();
 
+		~CncHomeView() override;
+
 		// DRO
 		void setAxisRowCount(size_t rows);			// 3 rows of 68 px or 4 rows of 50 px (PanelDue units)
 		void setAxisRow(size_t row, char letter, float work, float machine, bool homed);
@@ -159,6 +161,7 @@ namespace UI
 		Cnc::WcsProbePage m_wcsProbe;
 		Cnc::JobListPage m_jobList;
 		Cnc::JobPreviewPage m_jobPreview;
+		lv_timer_t* m_queueTimer = nullptr; // runs what the receive thread queued (State::RunOnUi)
 		Cnc::JobStatusPage m_jobStatus;
 		Cnc::MacrosPage m_macros;
 		Cnc::AlertsPage m_alerts;

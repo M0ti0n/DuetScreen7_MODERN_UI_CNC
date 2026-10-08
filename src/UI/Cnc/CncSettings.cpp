@@ -295,10 +295,11 @@ namespace UI::Cnc::Settings
 			}
 		}
 
+		// Subscribers run on the receive thread; Tick() and the pages on the UI thread: handled there, in order
 		template <size_t I>
 		bool onGlobal(Comm::JsonDecoder*, const char* data, const size_t[])
 		{
-			Value((Global)I, data);
+			State::RunOnUi([value = std::string(data != nullptr ? data : "")] { Value((Global)I, value); });
 			return true;
 		}
 
@@ -310,14 +311,18 @@ namespace UI::Cnc::Settings
 
 		bool onKey(Comm::JsonDecoder*, const char* data, const size_t[])
 		{
-			if (std::string(data) == "global")
-			{
-				Begin();
-			}
-			else if (s_receiving)
-			{
-				finishIncoming(); // another response: the global one is complete
-			}
+			State::RunOnUi(
+				[key = std::string(data != nullptr ? data : "")]
+				{
+					if (key == "global")
+					{
+						Begin();
+					}
+					else if (s_receiving)
+					{
+						finishIncoming(); // another response: the global one is complete
+					}
+				});
 			return true;
 		}
 	} // namespace

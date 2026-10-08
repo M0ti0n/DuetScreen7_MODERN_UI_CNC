@@ -595,6 +595,14 @@ namespace UI::Cnc
 			m_abortPending = false;
 			State::Send("M0\n"); // paused now: cancel the job
 		}
+		else if (m_abortPending && !m_abortPauseSent &&
+				 (status == OM::PrinterStatus::processing || status == OM::PrinterStatus::simulating))
+		{
+			// ABORT while it was resuming: resumed now, so pause it (M0 follows once paused)
+			State::Send("M25\n");
+			m_abortPauseSent = true;
+			m_abortStart = State::Now();
+		}
 		if (m_inProgress && (status == OM::PrinterStatus::processing || status == OM::PrinterStatus::simulating))
 		{
 			applySpindle(); // resumed: overrides changed while paused apply now
@@ -648,7 +656,8 @@ namespace UI::Cnc
 	{
 		if (m_inProgress)
 		{
-			lv_label_set_text(m_left, formatTime(seconds).c_str());
+			// 0: RRF has no estimate yet (job.timesLeft.file null)
+			lv_label_set_text(m_left, (seconds == 0) ? "-" : formatTime(seconds).c_str());
 		}
 	}
 
@@ -1005,7 +1014,13 @@ namespace UI::Cnc
 		}
 		else
 		{
-			State::Send("M25\n"); // pause first, M0 follows once paused
+			// Pause first, M0 follows once paused. Already pausing: that pause. Resuming: an M25 now would land
+			// in the resume, so it is sent once the job runs again (statusChanged).
+			m_abortPauseSent = m_status != OM::PrinterStatus::resuming;
+			if (m_status != OM::PrinterStatus::pausing && m_status != OM::PrinterStatus::resuming)
+			{
+				State::Send("M25\n");
+			}
 			m_abortPending = true;
 			m_abortStart = State::Now();
 		}

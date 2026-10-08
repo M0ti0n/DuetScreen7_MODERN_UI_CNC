@@ -147,6 +147,7 @@ namespace UI::Cnc::Messages
 												   : fmt::format("Enter {:d} to {:d} characters.", minLen, maxLen);
 					Popup::Message(
 						"ALERT !", reason, false, [msg, title, entered] { textPrompt(msg, title, entered); });
+					Popup::MarkMachineBox(); // part of the prompt: closed with it when answered elsewhere
 					return;
 				}
 				send(fmt::format("M292 R{{\"{:s}\"}} S{:d}", quoted(entered), msg.seq));
@@ -154,15 +155,16 @@ namespace UI::Cnc::Messages
 			Keyboard::Open(text, client, KeyboardOwner);
 		}
 
+		// Subscribers run on the receive thread: the popup is shown by the UI thread
 		bool pushMessage(Comm::JsonDecoder*, const char* data, const size_t[])
 		{
-			DisplayMessage(data != nullptr ? data : "", true);
+			State::RunOnUi([text = std::string(data != nullptr ? data : "")] { DisplayMessage(text, true); });
 			return true;
 		}
 
 		bool stateDisplayMessage(Comm::JsonDecoder*, const char* data, const size_t[])
 		{
-			DisplayMessage(data != nullptr ? data : "", false);
+			State::RunOnUi([text = std::string(data != nullptr ? data : "")] { DisplayMessage(text, false); });
 			return true;
 		}
 	} // namespace
@@ -178,12 +180,18 @@ namespace UI::Cnc::Messages
 		SubscriberMap::addSubscriber("state:displayMessage", &stateDisplayMessage);
 	}
 
+	namespace
+	{
+		void show(const Message& msg); // a new box (not None)
+	}
+
 	void Process(const Message& msg)
 	{
 		if (msg.mode == Mode::None)
 		{
-			// Answered elsewhere (DWC, timeout)
-			if (Popup::IsMessageOpen() || Popup::IsMachinePromptOpen())
+			// Answered elsewhere (DWC, timeout). Only the box's own popup: the machine reports "no box" with
+			// every state update, and an M117 MESSAGE or JOB DONE must stay.
+			if (Popup::IsMachineBoxOpen() || Popup::IsMachinePromptOpen())
 			{
 				Popup::Close();
 			}
@@ -198,87 +206,101 @@ namespace UI::Cnc::Messages
 			return;
 		}
 
-		const uint32_t seq = msg.seq;
-		const std::string title = msg.title.empty() ? std::string("MESSAGE") : msg.title;
-		// Tool change prompt during a job (title starts with TOOL, no jog controls): inline on JOB STATUS
-		if ((msg.mode == Mode::InfoConfirm || msg.mode == Mode::ConfirmCancel) && msg.controls == 0 &&
-			title.rfind("TOOL", 0) == 0 && s_jobHooks.showToolPrompt && s_jobHooks.showToolPrompt(msg.text, seq))
+		const uint32_t opened = Popup::OpenCount();
+		show(msg);
+		if (Popup::OpenCount() != opened)
 		{
-			Popup::CloseResponse(); // a reply popup must not hide the prompt's OK
-			return;
-		}
-		switch (msg.mode)
-		{
-		case Mode::Info:
-		case Mode::InfoClose:
-			if (autoRunning())
-			{
-				s_hooks.autoMessage(msg.title, msg.text); // progress of the auto probe macro
-			}
-			else if (Popup::CanShowPassive() && !jogOpen())
-			{
-				// Not over a popup in use (a value being typed is not thrown away).
-				// S1 (close button): closing it answers RRF (M292).
-				Popup::Handler onOk = nullptr;
-				if (msg.mode == Mode::InfoClose)
-				{
-					onOk = [seq] { send(fmt::format("M292 P0 S{:d}", seq)); };
-				}
-				Popup::Message(title, msg.text, false, onOk, nullptr, false, true);
-			}
-			break;
-
-		case Mode::InfoConfirm:
-			if (!jogPrompt(msg, title, false))
-			{
-				Popup::Message(title, msg.text, false, [seq] { send(fmt::format("M292 P0 S{:d}", seq)); });
-			}
-			break;
-
-		case Mode::ConfirmCancel:
-			if (!jogPrompt(msg, title, true))
-			{
-				Popup::Message(
-					title,
-					msg.text,
-					true,
-					[seq] { send(fmt::format("M292 P0 S{:d}", seq)); },
-					[seq] { send(fmt::format("M292 P1 S{:d}", seq)); });
-			}
-			break;
-
-		case Mode::Choices:
-			if (msg.choices.empty())
-			{
-				// Nothing to choose from: answered in DWC. First line first, so wrapping never cuts it.
-				Popup::Message(title, "Answer this prompt in DWC.\n" + msg.text, false, nullptr, nullptr, true);
-				break;
-			}
-			Popup::ChoosePrompt(
-				title,
-				msg.text,
-				msg.choices,
-				(msg.intDefault >= 0) ? (size_t)msg.intDefault : 0,
-				[seq](size_t i) { send(fmt::format("M292 R{{{:d}}} S{:d}", i, seq)); },
-				cancelHandler(msg));
-			break;
-
-		case Mode::NumberInt:
-			numberPrompt(msg, title, false);
-			break;
-
-		case Mode::NumberFloat:
-			numberPrompt(msg, title, true);
-			break;
-
-		case Mode::Text:
-			textPrompt(msg, title, msg.textDefault);
-			break;
-
-		default:
-			break;
+			Popup::MarkMachineBox(); // closed when the machine reports no box
 		}
 	}
+
+	namespace
+	{
+		void show(const Message& msg)
+		{
+			const uint32_t seq = msg.seq;
+			const std::string title = msg.title.empty() ? std::string("MESSAGE") : msg.title;
+			// Tool change prompt during a job (title starts with TOOL, no jog controls): inline on JOB STATUS
+			if ((msg.mode == Mode::InfoConfirm || msg.mode == Mode::ConfirmCancel) && msg.controls == 0 &&
+				title.rfind("TOOL", 0) == 0 && s_jobHooks.showToolPrompt && s_jobHooks.showToolPrompt(msg.text, seq))
+			{
+				Popup::CloseResponse(); // a reply popup must not hide the prompt's OK
+				return;
+			}
+			switch (msg.mode)
+			{
+			case Mode::Info:
+			case Mode::InfoClose:
+				if (autoRunning())
+				{
+					s_hooks.autoMessage(msg.title, msg.text); // progress of the auto probe macro
+				}
+				else if (Popup::CanShowPassive() && !jogOpen())
+				{
+					// Not over a popup in use (a value being typed is not thrown away).
+					// S1 (close button): closing it answers RRF (M292).
+					Popup::Handler onOk = nullptr;
+					if (msg.mode == Mode::InfoClose)
+					{
+						onOk = [seq] { send(fmt::format("M292 P0 S{:d}", seq)); };
+					}
+					Popup::Message(title, msg.text, false, onOk, nullptr, false, true);
+				}
+				break;
+
+			case Mode::InfoConfirm:
+				if (!jogPrompt(msg, title, false))
+				{
+					Popup::Message(title, msg.text, false, [seq] { send(fmt::format("M292 P0 S{:d}", seq)); });
+				}
+				break;
+
+			case Mode::ConfirmCancel:
+				if (!jogPrompt(msg, title, true))
+				{
+					Popup::Message(
+						title,
+						msg.text,
+						true,
+						[seq] { send(fmt::format("M292 P0 S{:d}", seq)); },
+						[seq] { send(fmt::format("M292 P1 S{:d}", seq)); });
+				}
+				break;
+
+			case Mode::Choices:
+				if (msg.choices.empty())
+				{
+					// Nothing to choose from: answered in DWC. First line first, so wrapping never cuts it.
+					Popup::Message(title, "Answer this prompt in DWC.\n" + msg.text, false, nullptr, nullptr, true);
+					break;
+				}
+				Popup::ChoosePrompt(
+					title,
+					msg.text,
+					msg.choices,
+					(msg.intDefault >= 0) ? (size_t)msg.intDefault : 0,
+					[seq](size_t i) { send(fmt::format("M292 R{{{:d}}} S{:d}", i, seq)); },
+					cancelHandler(msg));
+				break;
+
+			case Mode::NumberInt:
+				numberPrompt(msg, title, false);
+				break;
+
+			case Mode::NumberFloat:
+				numberPrompt(msg, title, true);
+				break;
+
+			case Mode::Text:
+				textPrompt(msg, title, msg.textDefault);
+				break;
+
+			default:
+				break;
+			}
+		}
+
+	} // namespace
 
 	void Response(const std::string& text, bool isError, bool consoleReply, bool systemShown)
 	{

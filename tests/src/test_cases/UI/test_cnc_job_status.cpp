@@ -330,6 +330,37 @@ TEST_F(TestCncJobStatus, AbortWhilePaused)
 	EXPECT_TRUE(lv_test_screenshot_compare("cnc/job_status_aborted.png")); // PanelDue j05_job_status_done
 }
 
+// ABORT while it resumes: no M25 into the resume; once it runs again it is paused, then cancelled.
+// While it pauses: no second M25, M0 once paused.
+TEST_F(TestCncJobStatus, AbortWhileResumingOrPausing)
+{
+	makeView();
+	startJob();
+	status("paused");
+	status("resuming");
+	sent.clear();
+	page().abortPressed();
+	Popup::PressOk();
+	EXPECT_TRUE(sent.empty()); // nothing into the resume
+	EXPECT_EQ(page().abortText(), "ABORTING");
+	status("processing");
+	EXPECT_EQ(last(), "M25\n"); // running again: pause it
+	status("pausing");
+	status("paused");
+	EXPECT_EQ(last(), "M0\n");
+	status("idle");
+	EXPECT_EQ(page().resultText(), "ABORTED");
+
+	startJob();
+	status("pausing");
+	sent.clear();
+	page().abortPressed();
+	Popup::PressOk();
+	EXPECT_TRUE(sent.empty()); // the pause under way is enough
+	status("paused");
+	EXPECT_EQ(last(), "M0\n");
+}
+
 TEST_F(TestCncJobStatus, AbortWhileRunningPausesFirst)
 {
 	makeView();

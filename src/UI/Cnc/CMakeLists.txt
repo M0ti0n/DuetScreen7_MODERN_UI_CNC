@@ -26,6 +26,7 @@ target_sources(
   ${CMAKE_CURRENT_SOURCE_DIR}/CncGcode.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/CncPreviewSource.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/CncPreviewView.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncStockSim.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/CncJobPreviewPage.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/CncSplash.cpp
 )

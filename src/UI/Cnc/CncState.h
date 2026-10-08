@@ -19,6 +19,16 @@ namespace UI::Cnc::State
 {
 	// ---- Commands ----
 	void Send(std::string_view gcode);					// to the Duet (or the test hook)
+	// A file name or text inside "..." of a G-code parameter: " and ' doubled (RRF: ' alone makes the next
+	// letter lowercase), e.g. M32 "0:/gcodes/Bob''s part.nc"
+	std::string Quoted(std::string_view text);
+
+	// Object model subscribers run on the receive thread (USB decode / HTTP). What they do to the UI is queued
+	// and run by the UI thread (RunQueued, every 20 ms), never under the UI lock on the receive thread: a USB
+	// reconnect on the UI thread joins the receive thread while holding that lock.
+	void SetUiThread();												// the thread that may touch the UI (the view's)
+	void RunOnUi(std::function<void()> fn);							// on the UI thread: at once; else queued
+	void RunQueued();												// the UI thread: what was queued, in order
 	void SetSendHook(std::function<void(std::string_view)> hook);	// tests: capture instead of sending
 	uint32_t Now();										// ms tick
 

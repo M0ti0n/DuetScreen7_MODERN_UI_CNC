@@ -177,6 +177,7 @@ namespace UI::Cnc
 		bool m_cancelSeen = false;
 		bool m_panelAbort = false;
 		bool m_abortPending = false;
+		bool m_abortPauseSent = false; // ABORT: its M25 is sent (not while resuming)
 		uint32_t m_abortStart = 0;
 		uint32_t m_elapsedSeconds = 0;
 		bool m_haveElapsed = false;

@@ -74,6 +74,7 @@ namespace UI::Cnc::Popup
 		constexpr int32_t ValW = 3 * KW + 2 * KGX;	  // 322
 		constexpr int32_t KeysY = NM + ValH + ValGap; // 81
 		constexpr size_t MaxValueChars = 9;
+		constexpr size_t MaxDecimals = 3;
 
 		// Machine prompt header (PanelDue units): title tile, text tile of up to 3 lines
 		constexpr int32_t HdrM = 12, HdrTitleH = 50, HdrGap = 8, HdrPitch = 26, HdrPad = 8;
@@ -110,6 +111,11 @@ namespace UI::Cnc::Popup
 		std::vector<std::string> s_lines;
 		Handler s_onOk;
 		Handler s_onTrash;				  // ConfirmWithTrash: the trash can
+		bool s_okGrey = false;			  // ConfirmWithTrash: the check is grey (not available)
+		bool s_okGreyOpen = false;		  // ... in the popup that is open
+		bool s_warningOpen = false;		  // the popup that is open has the warning look
+		bool s_machineBoxOpen = false;	  // the popup that is open shows the machine's message box
+		uint32_t s_openCount = 0;
 		Handler s_onCancel;				  // Message: X (M292 P1)
 		bool s_messageWithCancel = false; // Message: X and check, else the check alone, centred
 		bool s_messageWaits = false;	  // Message: the machine waits for an answer given in DWC
@@ -231,6 +237,10 @@ namespace UI::Cnc::Popup
 		void openWindowPx(Mode mode, int32_t x, int32_t y, int32_t w, int32_t h, bool modal)
 		{
 			deleteWindow();
+			s_okGreyOpen = false;
+			s_warningOpen = s_warningLook;
+			s_machineBoxOpen = false;
+			++s_openCount;
 			s_mode = mode;
 			lv_obj_t* top = lv_layer_top();
 			if (modal)
@@ -291,7 +301,11 @@ namespace UI::Cnc::Popup
 			lv_area_t a;
 			lv_obj_get_coords(obj, &a);
 			Pen pen(lv_event_get_layer(e), a.x1 + lv_area_get_width(&a) / 2, a.y1 + lv_area_get_height(&a) / 2);
-			if (lv_event_get_user_data(e) != nullptr)
+			if (lv_event_get_user_data(e) == (void*)2)
+			{
+				DrawOkIcon(pen, Colour::Muted()); // not available
+			}
+			else if (lv_event_get_user_data(e) != nullptr)
 			{
 				DrawOkIcon(pen, Colour::ButtonText());
 			}
@@ -304,9 +318,10 @@ namespace UI::Cnc::Popup
 		lv_obj_t* actionButton(int32_t x, int32_t y, int32_t w, int32_t h, bool ok)
 		{
 			lv_obj_t* b = CreateBare(s_box, X(x), Y(y), W(x, w), H(y, h));
-			StyleCard(b, ok ? Colour::Green() : Colour::StopRed(), Colour::Border(), false);
+			const bool grey = ok && s_okGrey;
+			StyleCard(b, grey ? Colour::Tile() : ok ? Colour::Green() : Colour::StopRed(), Colour::Border(), grey);
 			lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
-			lv_obj_add_event_cb(b, drawActionIcon, LV_EVENT_DRAW_MAIN_END, ok ? (void*)1 : nullptr);
+			lv_obj_add_event_cb(b, drawActionIcon, LV_EVENT_DRAW_MAIN_END, grey ? (void*)2 : ok ? (void*)1 : nullptr);
 			lv_obj_add_event_cb(
 				b,
 				[](lv_event_t* e)
@@ -381,14 +396,18 @@ namespace UI::Cnc::Popup
 				size_t end = p, fit = p;
 				while (end < text.size() && text[end] != '\n')
 				{
-					++end;
+					const size_t before = end;
+					do
+					{
+						++end; // a whole UTF-8 character
+					} while (end < text.size() && ((unsigned char)text[end] & 0xC0) == 0x80);
 					const bool wordEnd = end == text.size() || text[end] == ' ' || text[end] == '\n';
 					const std::string candidate(text.substr(p, end - p));
 					if (textWidth(candidate, font) > maxW)
 					{
 						if (fit == p)
 						{
-							fit = end - 1; // one over-long word: cut it where it fits
+							fit = (before > p) ? before : end; // one over-long word: cut it where it fits
 						}
 						break;
 					}
@@ -648,6 +667,11 @@ namespace UI::Cnc::Popup
 			if (s_value.size() >= MaxValueChars)
 			{
 				return; // full: the key does nothing
+			}
+			const size_t dot = s_value.find('.');
+			if (c != '.' && dot != std::string::npos && s_value.size() - dot > MaxDecimals)
+			{
+				return; // at most MaxDecimals decimals (what is sent and saved)
 			}
 
 			if (c == '.')
@@ -911,10 +935,22 @@ namespace UI::Cnc::Popup
 		openStandard(Mode::Confirm, title, lines, std::move(onOk));
 	}
 
-	void ConfirmWithTrash(std::string_view title, const std::vector<std::string>& lines, Handler onTrash, Handler onOk)
+	void ConfirmWithTrash(
+		std::string_view title, const std::vector<std::string>& lines, Handler onTrash, Handler onOk, bool okAvailable)
 	{
 		s_alertBackToNumpad = false;
+		s_okGrey = !okAvailable;
 		openStandard(Mode::Confirm, title, lines, std::move(onOk), std::move(onTrash));
+		s_okGrey = false;
+		s_okGreyOpen = !okAvailable;
+	}
+
+	void ConfirmWarning(std::string_view title, const std::vector<std::string>& lines, Handler onOk)
+	{
+		s_alertBackToNumpad = false;
+		s_warningLook = true;
+		openStandard(Mode::Confirm, title, lines, std::move(onOk));
+		s_warningLook = false;
 	}
 
 	void Alert(std::string_view text)
@@ -1287,6 +1323,31 @@ namespace UI::Cnc::Popup
 	bool HasTrash()
 	{
 		return s_mode == Mode::Confirm && s_onTrash != nullptr;
+	}
+
+	uint32_t OpenCount()
+	{
+		return s_openCount;
+	}
+
+	void MarkMachineBox()
+	{
+		s_machineBoxOpen = s_mode != Mode::None;
+	}
+
+	bool IsMachineBoxOpen()
+	{
+		return s_mode != Mode::None && s_machineBoxOpen;
+	}
+
+	bool WarningLook()
+	{
+		return s_mode != Mode::None && s_warningOpen;
+	}
+
+	bool OkGreyed()
+	{
+		return s_mode == Mode::Confirm && s_okGreyOpen;
 	}
 
 	void PressTrash()

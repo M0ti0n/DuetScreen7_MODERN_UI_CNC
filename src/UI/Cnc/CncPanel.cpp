@@ -16,8 +16,10 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <deque>
 #include <fmt/format.h>
 #include <fstream>
+#include <unistd.h>
 #include <vector>
 
 namespace UI::Cnc::Panel
@@ -29,6 +31,7 @@ namespace UI::Cnc::Panel
 		constexpr StorageKey<unsigned int> ID_CNC_ROTATION = {"cnc:rotation", 90u};
 		constexpr StorageKey<unsigned int> ID_CNC_SOUND = {"cnc:sound", 1u};
 		constexpr StorageKey<unsigned int> ID_CNC_PREVIEW_SPLIT = {"cnc:preview_split", 0u};
+		constexpr StorageKey<unsigned int> ID_CNC_PREVIEW_IN_JOB = {"cnc:preview_in_job", 0u};
 
 		constexpr unsigned int ClickFrequency = 3000, ClickMs = 12;
 
@@ -36,7 +39,8 @@ namespace UI::Cnc::Panel
 		std::function<void(const std::string&)> s_hook;
 		struct TestValues
 		{
-			unsigned int accent = 0, brightness = 100, infoTimeout = 6, dim = 0, rotation = 90, sound = 1, split = 0;
+			unsigned int accent = 0, brightness = 100, infoTimeout = 6, dim = 0, rotation = 90, sound = 1, split = 0,
+						 previewInJob = 0;
 			Link link = Link::Uart;
 			std::string ip = "192.168.1.50";
 			std::string password;
@@ -76,6 +80,9 @@ namespace UI::Cnc::Panel
 			StorageHelper::setData(key, value);
 		}
 
+		constexpr size_t MaxToneFiles = 16;
+		std::deque<std::string> s_toneFiles; // made by this run, oldest first
+
 		// A sine tone as a WAV file in /tmp (made once per tone)
 		std::string toneFile(unsigned int frequency, unsigned int ms)
 		{
@@ -88,6 +95,13 @@ namespace UI::Cnc::Panel
 			if (exists.good())
 			{
 				return path;
+			}
+			// At most MaxToneFiles kept (a macro with many different M300 tones must not fill /tmp)
+			s_toneFiles.push_back(path);
+			if (s_toneFiles.size() > MaxToneFiles)
+			{
+				std::remove(s_toneFiles.front().c_str());
+				s_toneFiles.pop_front();
 			}
 			constexpr uint32_t Rate = 22050;
 			const uint32_t n = Rate * ms / 1000;
@@ -116,18 +130,23 @@ namespace UI::Cnc::Panel
 			return path;
 		}
 
+		// The receive thread: played by the UI thread (touch clicks use Beep() there too)
 		bool beepDuration(Comm::JsonDecoder*, const int32_t& val, const size_t[])
 		{
-			s_beepDuration = (val > 0) ? (unsigned int)val : 0;
+			State::RunOnUi([d = val] { s_beepDuration = (d > 0) ? (unsigned int)d : 0; });
 			return true;
 		}
 
 		bool beepFrequency(Comm::JsonDecoder*, const int32_t& val, const size_t[])
 		{
-			if (val > 0 && s_beepDuration > 0)
-			{
-				Beep((unsigned int)val, s_beepDuration); // M300 on the machine
-			}
+			State::RunOnUi(
+				[f = val]
+				{
+					if (f > 0 && s_beepDuration > 0)
+					{
+						Beep((unsigned int)f, s_beepDuration); // M300 on the machine
+					}
+				});
 			return true;
 		}
 	} // namespace
@@ -164,20 +183,54 @@ namespace UI::Cnc::Panel
 		return (a < NumAccents) ? a : 0;
 	}
 
-	void SetAccent(unsigned int index)
+	void SetAccent(unsigned int index, bool restart)
 	{
 		if (index >= NumAccents)
 		{
 			return;
 		}
 		set(ID_CNC_ACCENT, &TestValues::accent, index);
+		if (restart)
+		{
+			RestartUi(); // the UI comes back with the new colour
+		}
+	}
+
+	void RestartUi()
+	{
 		if (s_hook)
 		{
 			s_hook("restart");
 			return;
 		}
 		Splash::SkipNextStart(); // no splash when coming back, as on PanelDue
-		Restart();				 // the UI comes back with the new colour
+#if SIMULATION
+		// exit() with the communication threads still running ends in std::terminate (or hangs): start the
+		// program again in place instead, as the panel's service restart does
+		std::vector<std::string> args;
+		{
+			std::ifstream f("/proc/self/cmdline", std::ios::binary);
+			std::string arg;
+			while (std::getline(f, arg, '\0'))
+			{
+				args.push_back(arg);
+			}
+		}
+		std::vector<char*> argv;
+		for (std::string& a : args)
+		{
+			argv.push_back(a.data());
+		}
+		argv.push_back(nullptr);
+		std::fflush(nullptr);
+		if (!args.empty())
+		{
+			execv("/proc/self/exe", argv.data());
+		}
+		_exit(EXIT_SUCCESS); // no destructors: the threads still run
+#else
+		Restart();
+#endif
 	}
 
 	unsigned int Brightness()
@@ -331,6 +384,17 @@ namespace UI::Cnc::Panel
 	void SetPreviewToolChangesOnly(bool on)
 	{
 		set(ID_CNC_PREVIEW_SPLIT, &TestValues::split, on ? 1u : 0u);
+	}
+
+	PreviewInJob PreviewDuringJob()
+	{
+		const unsigned int v = get(ID_CNC_PREVIEW_IN_JOB, &TestValues::previewInJob);
+		return (v <= (unsigned int)PreviewInJob::Off) ? (PreviewInJob)v : PreviewInJob::AnyFile;
+	}
+
+	void SetPreviewDuringJob(PreviewInJob mode)
+	{
+		set(ID_CNC_PREVIEW_IN_JOB, &TestValues::previewInJob, (unsigned int)mode);
 	}
 
 	void SetDuetPassword(const std::string& password)

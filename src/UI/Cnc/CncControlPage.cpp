@@ -553,12 +553,12 @@ namespace UI::Cnc
 			pad.max = (float)((State::SpindleMaxRpm() > 0) ? State::SpindleMaxRpm() : UnknownMaxRpm);
 			pad.onOk = [fromToolTile](float value)
 			{
-				State::SetSpindleRpm((int32_t)(value + 0.5f));
 				if (State::MachineBusy())
 				{
 					Popup::Refuse("Locked while a job is running."); // a job started while the numpad was open
 					return;
 				}
+				State::SetSpindleRpm((int32_t)(value + 0.5f)); // only a speed that is used
 				if (State::SpindleRunning() || fromToolTile)
 				{
 					State::SendSpindleOn(); // new speed for the running spindle, or start it

@@ -335,3 +335,73 @@ TEST(TestCncGcode, NamesWinOverGuessesAndRepeatedCommentsAreNoNames)
 	EXPECT_EQ(t.ops[1].name, "2D Adaptive Clearing1");
 	EXPECT_FLOAT_EQ(t.ops[1].zMin, -20.5f);
 }
+
+// M563 P<n> in the file: tools the job creates itself (not reported as missing from the tool table)
+TEST(TestCncGcode, ToolsTheFileDefines)
+{
+	const Program p = Parse(readFile("tests/object_model/cnc/gcode/own_tools.nc"));
+	ASSERT_EQ(p.ops.size(), 2u);
+	EXPECT_EQ(p.definedTools, std::vector<int>({5}));
+	EXPECT_TRUE(p.definesTool(5));
+	EXPECT_FALSE(p.definesTool(1));
+	EXPECT_TRUE(Parse("M563 P7 S\"a\"\nM563 P3\nM563 P7\nG1 X1 F100\n").definedTools == std::vector<int>({3, 7}));
+	EXPECT_TRUE(Parse(readFile("tests/object_model/cnc/gcode/bracket_fusion.nc")).definedTools.empty());
+}
+
+// An inch program: Fusion's D= tool lines are inches like the moves; "6mm" in a tool text stays mm
+TEST(TestCncGcode, InchToolDiameters)
+{
+	const Program p = Parse("G20\n(T1  D=0.25 CR=0 - ZMIN=-0.5 - flat end mill)\nT1 M6\nM3 S10000\nG0 X0 Y0 Z0.1\n"
+							"G1 Z-0.1 F10\nG1 X1\n");
+	ASSERT_EQ(p.ops.size(), 1u);
+	EXPECT_NEAR(p.ops[0].toolDiameter, 6.35f, 0.001f);
+	const Program mm = Parse("G21\n(T1  D=6 CR=0 - ZMIN=-5 - flat end mill)\nT1 M6\nM3 S10000\nG0 X0 Y0 Z1\n"
+							 "G1 Z-1 F100\nG1 X10\n");
+	ASSERT_EQ(mm.ops.size(), 1u);
+	EXPECT_NEAR(mm.ops[0].toolDiameter, 6.0f, 0.001f);
+}
+
+// S and F of other commands are not the spindle speed / feed
+TEST(TestCncGcode, OtherCommandsDoNotSetSpindleOrFeed)
+{
+	const Program p = Parse("T1 M6\nM3 S18000\nG4 S3\nM42 P0 S1\nM106 S255\nM568 P0 F12000\nG0 X0 Y0 Z1\n"
+							"G1 Z-1 F600\nG1 X20\n");
+	ASSERT_EQ(p.ops.size(), 1u);
+	EXPECT_FLOAT_EQ(p.ops[0].spindle, 18000.0f);
+	EXPECT_FLOAT_EQ(p.ops[0].feed, 600.0f);
+}
+
+// G2 with R ending where it starts: no circle (RRF refuses it): drawn as a straight move, no NaN
+TEST(TestCncGcode, ZeroLengthRadiusArc)
+{
+	const Program p = Parse("M3 S1000\nG0 X10 Y10 Z1\nG1 Z-1 F100\nG2 X10 Y10 R5\nG1 X20\n");
+	for (const Point& pt : p.points)
+	{
+		EXPECT_FALSE(std::isnan(pt.x) || std::isnan(pt.y) || std::isnan(pt.z));
+	}
+	EXPECT_FALSE(p.cutBounds.empty);
+	EXPECT_NEAR(p.cutBounds.maxX, 20.0f, 0.001f);
+	EXPECT_NEAR(p.cutBounds.minX, 10.0f, 0.001f);
+}
+
+// The tip angle of pointed tools: Fusion's TAPER (drill: the tip angle; chamfer / engrave: from the axis),
+// ";CNC_TOOL ... A=", "60°" in a description; defaults 90 (V) and 118 (drill)
+TEST(TestCncGcode, PointedToolAngles)
+{
+	const Program p = Parse("(T1  D=6 CR=0 TAPER=118deg - ZMIN=-22 - drill)\n"
+							"(T2  D=6.35 CR=0 TAPER=45deg - ZMIN=-1 - chamfer mill)\n"
+							"(T3: 60deg V-bit)\n"
+							"(T4: engraver)\n"
+							"(T5  D=6 CR=0 - ZMIN=-5 - flat end mill)\n"
+							"T1\nM3 S1000\nG0 X0 Y0 Z1\nG1 Z-1 F100\nG0 Z5\n"
+							"T2\nM3 S1000\nG0 X0 Y0 Z1\nG1 Z-1 F100\nG0 Z5\n"
+							"T3\nM3 S1000\nG0 X0 Y0 Z1\nG1 Z-1 F100\nG0 Z5\n"
+							"T4\nM3 S1000\nG0 X0 Y0 Z1\nG1 Z-1 F100\nG0 Z5\n"
+							"T5\nM3 S1000\nG0 X0 Y0 Z1\nG1 Z-1 F100\nG0 Z5\n");
+	ASSERT_EQ(p.ops.size(), 5u);
+	EXPECT_FLOAT_EQ(p.ops[0].toolAngle, 118.0f);
+	EXPECT_FLOAT_EQ(p.ops[1].toolAngle, 90.0f);
+	EXPECT_FLOAT_EQ(p.ops[2].toolAngle, 60.0f);
+	EXPECT_FLOAT_EQ(p.ops[3].toolAngle, 90.0f); // not given: 90
+	EXPECT_FLOAT_EQ(p.ops[4].toolAngle, 0.0f);	// flat
+}

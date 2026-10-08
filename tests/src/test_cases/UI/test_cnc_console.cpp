@@ -10,6 +10,7 @@
 #include "UI/Cnc/CncHomeView.h"
 #include "UI/Cnc/CncKeyboard.h"
 #include "UI/Cnc/CncLayout.h"
+#include "UI/Cnc/CncMessages.h"
 #include "UI/Cnc/CncPopup.h"
 #include "UI/Cnc/CncState.h"
 #include "test_utils/UiTestSuite.h"
@@ -206,4 +207,25 @@ TEST_F(TestCncConsole, LongReplyFillsTheLogWithDots)
 	lv_tick_inc(65000);
 	page.tick();
 	EXPECT_EQ(page.lineAge(0), "1m05");
+}
+
+// A machine text prompt (M291 S7) takes the keyboard over CONSOLE: CONSOLE is told, so it can open it again
+TEST_F(TestCncConsole, PromptTakesTheKeyboard)
+{
+	auto view = makeView();
+	auto& page = view->getConsolePage();
+	page.inputPressed();
+	ASSERT_TRUE(page.keyboardOpen());
+	Messages::Message m;
+	m.mode = Messages::Mode::Text;
+	m.seq = 4;
+	m.title = "NOTE";
+	m.text = "Short note";
+	Messages::Process(m);
+	EXPECT_TRUE(Keyboard::IsOpenFor(Messages::KeyboardOwner));
+	EXPECT_FALSE(page.keyboardOpen()); // told
+	Keyboard::PressCancel();
+	page.inputPressed(); // opens again
+	EXPECT_TRUE(page.keyboardOpen());
+	Keyboard::PressCancel();
 }

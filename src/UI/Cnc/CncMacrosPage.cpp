@@ -536,7 +536,7 @@ namespace UI::Cnc
 							   Popup::Refuse(Locked);
 							   return;
 						   }
-						   State::Send(fmt::format("M98 P\"{:s}\"\n", path));
+						   State::Send(fmt::format("M98 P\"{:s}\"\n", State::Quoted(path)));
 					   });
 	}
 

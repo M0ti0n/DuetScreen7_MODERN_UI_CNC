@@ -26,6 +26,7 @@ namespace UI::Cnc
 	namespace
 	{
 		constexpr int KeyboardOwner = 5;
+		bool s_restartAfterSave = false; // FACTORY RESET (BOTH): restart once the machine settings are saved
 
 		const char* const PanelLabels[SettingsPage::NumPanelTiles] = {"ACCENT COLOR",
 																	  "BRIGHTNESS",
@@ -35,6 +36,7 @@ namespace UI::Cnc
 																	  "SOUND",
 																	  "CONNECTION",
 																	  "SPLIT OPERATIONS",
+																	  "PREVIEW IN JOB",
 																	  "ABOUT"};
 		const char* const MachineLabels[SettingsPage::NumMachineTiles] = {"PROBE MODE",
 																		  "TOOL HOLDER",
@@ -449,7 +451,10 @@ namespace UI::Cnc
 												 }
 												 if (Panel::Accent() != 0)
 												 {
-													 Panel::SetAccent(0); // restarts the UI
+													 // restarts the UI; with the machine settings: once they are
+													 // saved (the restart would cut the file write off)
+													 Panel::SetAccent(0, !machine);
+													 s_restartAfterSave = machine;
 												 }
 											 }
 										 });
@@ -541,10 +546,17 @@ namespace UI::Cnc
 						  {
 							  if ((c == 1) != Panel::PreviewToolChangesOnly())
 							  {
-								  Panel::SetPreviewToolChangesOnly(c == 1);
-								  PreviewSource::Reload(); // the job read again with it
+								  Panel::SetPreviewToolChangesOnly(c == 1); // PREVIEW reads its file again with it
+																			// (PREVIEW IN JOB: OFF: after the job)
 							  }
 						  });
+			break;
+		case PPreviewInJob:
+			// What PREVIEW may show while a job runs (OFF: no downloads from the machine during a job)
+			Popup::Choose("PREVIEW IN JOB",
+						  {"ANY FILE", "RUNNING JOB", "OFF"},
+						  (size_t)Panel::PreviewDuringJob(),
+						  [](size_t c) { Panel::SetPreviewDuringJob((Panel::PreviewInJob)c); });
 			break;
 		case PAbout:
 		{
@@ -950,6 +962,11 @@ namespace UI::Cnc
 	void SettingsPage::tick()
 	{
 		Settings::Tick(); // the file writer, every 100 ms
+		if (s_restartAfterSave && !Settings::Writing())
+		{
+			s_restartAfterSave = false;
+			Panel::RestartUi(); // FACTORY RESET: the new accent colour
+		}
 	}
 
 	// ---- For tests ----

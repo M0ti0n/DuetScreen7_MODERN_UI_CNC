@@ -30,7 +30,8 @@ namespace UI::Cnc::Panel
 	void Init();								// touch click and the machine's beeps (once the display exists)
 
 	unsigned int Accent();
-	void SetAccent(unsigned int index);			// stored; the UI restarts to show it
+	void SetAccent(unsigned int index, bool restart = true); // stored; the UI restarts to show it
+	void RestartUi();										 // the UI starts again (the simulator: the program again)
 	unsigned int Brightness();					// %
 	void SetBrightness(unsigned int percent);
 	unsigned int InfoTimeout();					// s, 0 = replies are not shown (errors are)
@@ -69,6 +70,15 @@ namespace UI::Cnc::Panel
 	// SETTINGS > SPLIT OPERATIONS (PREVIEW): false AUTO (names, else guesses), true TOOL CHANGES only
 	bool PreviewToolChangesOnly();
 	void SetPreviewToolChangesOnly(bool on);
+	// SETTINGS > PREVIEW IN JOB: what PREVIEW may show while a job runs
+	enum class PreviewInJob : uint8_t
+	{
+		AnyFile,	// the running job, or another file opened from JOB LIST (downloaded when opened)
+		RunningJob, // the running job only
+		Off			// no downloads while a job runs: only a file PREVIEW already holds
+	};
+	PreviewInJob PreviewDuringJob();
+	void SetPreviewDuringJob(PreviewInJob mode);
 
 	// Tests: shell commands and restarts go to the hook instead, nothing is stored on disk
 	void SetTestHook(std::function<void(const std::string&)> hook);

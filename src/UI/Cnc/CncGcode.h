@@ -71,6 +71,8 @@ namespace UI::Cnc::Gcode
 		int tool = -1;				// -1: no tool selected
 		float toolDiameter = 0;		// 0: not known
 		std::string toolType;		// short, upper case: FLAT, BALL, DRILL, FACE MILL, ... ("" not known)
+		float toolAngle = 0;		// pointed tools (V-BIT, CHAMFER, ENGRAVE, DRILL, SPOT DRILL): included tip angle,
+									// degrees (from the file, else 90; drills 118); 0: not pointed
 		unsigned int wcs = 1;		// 1 = G54 .. 6 = G59, 7..9 = G59.1..G59.3
 		float spindle = 0;			// highest S while cutting (rpm)
 		bool spindleCcw = false;	// M4
@@ -99,6 +101,9 @@ namespace UI::Cnc::Gcode
 		double seconds = 0;
 		size_t lines = 0;
 		bool truncated = false;		// too many points: small moves were merged
+		std::vector<uint32_t> pointOffsets; // per point: byte offset of the line it comes from (rising)
+		std::vector<int> definedTools;		// tools the file creates itself (M563 P<n>), sorted
+		bool definesTool(int tool) const;
 	};
 
 	struct Options
@@ -119,4 +124,6 @@ namespace UI::Cnc::Gcode
 	std::string FormatTime(double seconds);
 	// The operation that contains this file position (job.filePosition), -1 if none
 	int OperationAt(const Program& program, uint32_t filePosition);
+	// How many points come from lines before this file position (job.filePosition): the ones already run
+	uint32_t PointsBefore(const Program& program, uint32_t filePosition);
 }

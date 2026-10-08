@@ -566,6 +566,28 @@ TEST_F(TestCncSettings, Connection)
 	EXPECT_EQ(text(), "Locked while a job is running or paused.");
 }
 
+// BOTH with another accent colour: the UI restarts (for the colour) only after the machine settings file
+// is written; a restart right away would cut the write off
+TEST_F(TestCncSettings, FactoryResetBothRestartsAfterTheFile)
+{
+	makeView();
+	machineSettings();
+	Panel::SetAccent(3, false);
+	page().factoryResetPressed();
+	Popup::PressChoice(2); // BOTH
+	Popup::PressOk();
+	Popup::PressOk();
+	EXPECT_EQ(Panel::Accent(), 0u);
+	EXPECT_TRUE(Settings::Writing());
+	EXPECT_TRUE(std::find(shell.begin(), shell.end(), "restart") == shell.end());
+	page().tick();
+	EXPECT_TRUE(std::find(shell.begin(), shell.end(), "restart") == shell.end()); // still writing
+	const auto lines = writeAll();
+	EXPECT_EQ(lines.back(), "M471 S\"0:/sys/cnc-settings.tmp\" T\"0:/sys/cnc-settings.g\" D1\n");
+	page().tick();
+	EXPECT_EQ(shell.back(), "restart");
+}
+
 TEST_F(TestCncSettings, FactoryReset)
 {
 	makeView();

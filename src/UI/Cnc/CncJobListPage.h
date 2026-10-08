@@ -28,20 +28,32 @@
 #pragma once
 
 #include "CncLayout.h"
+#include "CncPreviewSource.h"
 #include "CncWidgets.h"
 #include "lvgl/lvgl.h"
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace UI::Cnc
 {
+	// What PREVIEW found in the file (empty: no warnings, or the file was not read)
+	struct RunCheck
+	{
+		std::vector<int> warnedOps;		  // operation numbers (from 1) with warnings
+		std::vector<std::string> serious; // "Op 3: T5 not in the tool table": asked once more
+	};
+
 	// "Do you want to RUN this job?" and M32 on the check mark; refused while a job runs, when not
 	// connected or not idle (also checked again on the check mark). PREVIEW's RUN tile uses it.
-	void AskRunJob(const std::string& path);
+	// With warnings: the question in the warning look names the operations; serious ones (cutting with
+	// the spindle off, a tool the machine does not have) ask "RUN anyway?" after the check mark.
+	void AskRunJob(const std::string& path, const RunCheck& check = RunCheck());
+	constexpr size_t MaxSeriousLines = 3;
 
 	class JobListPage
 	{
@@ -68,7 +80,9 @@ namespace UI::Cnc
 		static constexpr uint32_t RefreshAfterDelete = 600;		// ms: a fresh listing after M30
 
 		// Machine data (the listing callback; the tests call it directly)
-		void listingArrived(const std::string& dir, std::vector<Entry> entries);
+		void listingArrived(const std::string& dir,
+							std::vector<Entry> entries,
+							std::map<std::string, PreviewSource::Stamp> stamps = {}); // stamps by file name
 
 		// Touches (also used by the tests)
 		void rowPressed(unsigned int row);
@@ -87,6 +101,7 @@ namespace UI::Cnc
 		std::string fullDir() const;							// "0:/gcodes/sub/"
 		const std::string& selectedName() const { return m_selected; }
 		std::string selectedPath() const;			// "0:/gcodes/folder/part.nc", "" when nothing is selected
+		PreviewSource::Stamp stampOf(const std::string& path) const; // size and date from the listing, else empty
 		size_t scroll() const { return m_scroll; }
 		bool searching() const { return m_searching; }
 		const std::string& query() const { return m_query; }
@@ -112,12 +127,14 @@ namespace UI::Cnc
 		bool filterOn() const { return m_searching && !m_query.empty(); }
 		void askAction(const std::string& name);	// the JOB popup: trash / X / check
 		void askDelete(const std::string& name);
+		std::string previewRefusal(const std::string& path) const;
 		void openKeyboard();
 		void keyboardGone();
 		void cancelSearch();
 
 		lv_obj_t* m_root = nullptr;
 		std::function<void()> m_previewRequest;
+		std::map<std::string, PreviewSource::Stamp> m_stamps; // the listed folder's files: full path -> stamp
 		std::string m_jobFile;
 		uint32_t m_refreshAt = 0;					// State::Now() of the listing after a delete, 0 = none
 		int32_t m_top = 0;

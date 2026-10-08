@@ -451,7 +451,7 @@ namespace Comm
 			query["gcode"] = gcode;
 			AsyncGet("/rr_gcode",
 					 query,
-					 [gcode](const HttpResponsePtr& r)
+					 [gcode = std::string(gcode)](const HttpResponsePtr& r) // a copy: the caller's text is gone by then
 					 {
 						 if (r->status_code != HTTP_STATUS_OK)
 						 {

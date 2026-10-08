@@ -16,6 +16,7 @@
 #include "UI/Cnc/CncState.h"
 #include "test_utils/UiTestSuite.h"
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <gtest/gtest.h>
@@ -54,6 +55,7 @@ class TestCncJobPreview : public UiTestSuite
 		Panel::SetTestHook([](const std::string&) {});
 		State::SetSendHook([this](std::string_view g) { sent.emplace_back(g); });
 		PreviewSource::Reset();
+		JobPreviewPage::SetPartDefault(false); // the toolpath views; PART tests turn it on
 		PreviewSource::SetTestSource(
 			[this](const std::string& path, std::string& contents)
 			{
@@ -75,6 +77,7 @@ class TestCncJobPreview : public UiTestSuite
 		PreviewSource::Reset();
 		Panel::SetTestHook(nullptr);
 		State::SetSendHook(nullptr);
+		JobPreviewPage::SetPartDefault(true);
 	}
 
 	void makeView(const std::string& listPath)
@@ -109,6 +112,7 @@ class TestCncJobPreview : public UiTestSuite
 
 TEST_F(TestCncJobPreview, NothingSelected)
 {
+	JobPreviewPage::SetPartDefault(true); // the page as it starts (the same screenshot as TestCncHome's)
 	makeView("");
 	EXPECT_EQ(page().message(), "Select a job in JOB LIST");
 	EXPECT_EQ(page().opButtonText(0), "");
@@ -133,12 +137,58 @@ TEST_F(TestCncJobPreview, RunTile)
 	EXPECT_TRUE(page().runAvailable()); // idle, a file from JOB LIST: accent outline, play triangle
 	EXPECT_EQ(page().fileText(), "plate_freecad.nc");
 	EXPECT_TRUE(lv_test_screenshot_compare("cnc/preview_run_tile.png"));
+	// Operation 3 uses T5, which the machine does not have: the question names it, then asks again
 	page().pressRun();
-	EXPECT_EQ(Popup::Title(), "ALERT !");
-	EXPECT_EQ(Popup::Lines(), std::vector<std::string>({"Do you want to RUN", "this job?", "plate_freecad.nc"}));
+	EXPECT_EQ(Popup::Title(), "WARNING");
+	EXPECT_TRUE(Popup::WarningLook());
+	EXPECT_EQ(
+		Popup::Lines(),
+		std::vector<std::string>({"Do you want to RUN", "this job?", "plate_freecad.nc", "", "Warning: operation 3"}));
+	EXPECT_TRUE(lv_test_screenshot_compare("cnc/preview_run_warnings.png"));
+	Popup::PressOk();
+	EXPECT_EQ(Popup::Title(), "WARNING");
+	EXPECT_EQ(Popup::Lines(), std::vector<std::string>({"Op 3: T5 not in the tool table", "", "RUN anyway?"}));
+	EXPECT_TRUE(lv_test_screenshot_compare("cnc/preview_run_anyway.png"));
+	Popup::PressCancel(); // X: nothing started
+	EXPECT_TRUE(sent.empty());
+
+	page().pressRun();
+	Popup::PressOk();
 	Popup::PressOk();
 	ASSERT_FALSE(sent.empty());
 	EXPECT_EQ(sent.back(), "M32 \"0:/gcodes/plate_freecad.nc\"\n");
+}
+
+// No warnings: the plain question. A tool the file creates itself (M563) is not missing.
+TEST_F(TestCncJobPreview, RunWithoutWarningsAndOwnTools)
+{
+	makeView("0:/gcodes/own_tools.nc");
+	ASSERT_EQ(page().opButtonText(1).substr(0, 2), "2|");
+	EXPECT_TRUE(page().warnings(1).empty()); // T5: M563 P5 in the file
+	page().pressRun();
+	EXPECT_EQ(Popup::Title(), "ALERT !");
+	EXPECT_FALSE(Popup::WarningLook());
+	EXPECT_EQ(Popup::Lines(), std::vector<std::string>({"Do you want to RUN", "this job?", "own_tools.nc"}));
+	Popup::PressOk();
+	ASSERT_FALSE(sent.empty());
+	EXPECT_EQ(sent.back(), "M32 \"0:/gcodes/own_tools.nc\"\n");
+}
+
+// Warnings that are only information (below the stock bottom, outside the travel): asked once
+TEST_F(TestCncJobPreview, RunWithInformationalWarningsAsksOnce)
+{
+	makeView("0:/gcodes/below_stock.nc");
+	ASSERT_EQ(page().warnings(0).size(), 1u);
+	EXPECT_EQ(page().warnings(0)[0].text, "Cuts 1 mm below the stock bottom");
+	page().pressRun();
+	EXPECT_EQ(Popup::Title(), "WARNING");
+	EXPECT_EQ(
+		Popup::Lines(),
+		std::vector<std::string>({"Do you want to RUN", "this job?", "below_stock.nc", "", "Warning: operation 1"}));
+	Popup::PressOk();
+	EXPECT_FALSE(Popup::IsOpen()); // nothing serious: started
+	ASSERT_FALSE(sent.empty());
+	EXPECT_EQ(sent.back(), "M32 \"0:/gcodes/below_stock.nc\"\n");
 }
 
 TEST_F(TestCncJobPreview, RunTileGreyWhenItCannotRun)
@@ -264,6 +314,10 @@ TEST_F(TestCncJobPreview, ViewPresetsDragAndDoubleTap)
 	EXPECT_EQ(page().view().preset(), PreviewView::Preset::Front);
 	EXPECT_TRUE(lv_test_screenshot_compare("cnc/preview_front.png"));
 	page().pressPreset();
+	EXPECT_EQ(page().view().preset(), PreviewView::Preset::Side);
+	EXPECT_EQ(page().presetText(), "SIDE");
+	EXPECT_TRUE(lv_test_screenshot_compare("cnc/preview_side.png"));
+	page().pressPreset();
 	EXPECT_EQ(page().view().preset(), PreviewView::Preset::Iso);
 
 	page().view().rotate(30.0f, 20.0f);
@@ -276,6 +330,95 @@ TEST_F(TestCncJobPreview, ViewPresetsDragAndDoubleTap)
 	page().doubleTap();
 	EXPECT_EQ(page().view().preset(), PreviewView::Preset::Iso);
 	EXPECT_FLOAT_EQ(page().view().yaw(), -35.0f);
+}
+
+// ---- PART: the simulated part, the cut point and the sections ----
+
+TEST_F(TestCncJobPreview, PartViews)
+{
+	JobPreviewPage::SetPartDefault(true);
+	makeView(Fusion);
+	EXPECT_TRUE(page().partOn());
+	page().pressOp(1); // 2D ADAPTIVE CLEARING: the part after the facing and the pocket
+	EXPECT_EQ(page().view().stockMap().lastOp, 1);
+	EXPECT_TRUE(lv_test_screenshot_compare("cnc/preview_part_iso.png"));
+	page().pressPreset();
+	EXPECT_EQ(page().presetText(), "TOP");
+	EXPECT_TRUE(lv_test_screenshot_compare("cnc/preview_part_top.png"));
+	page().pressPreset();
+	EXPECT_EQ(page().presetText(), "FRONT"); // no cut point: a drawing, not a section
+	EXPECT_EQ(page().cutText(), "");
+	EXPECT_TRUE(lv_test_screenshot_compare("cnc/preview_part_front.png"));
+	page().pressPreset();
+	EXPECT_EQ(page().presetText(), "SIDE");
+	EXPECT_TRUE(lv_test_screenshot_compare("cnc/preview_part_side.png"));
+	page().pressPart(); // off: the toolpath view again
+	EXPECT_FALSE(page().partOn());
+	page().pressPart();
+	EXPECT_TRUE(page().partOn());
+}
+
+TEST_F(TestCncJobPreview, TapPlacesTheCutAndSelectsTheOperation)
+{
+	JobPreviewPage::SetPartDefault(true);
+	makeView(Fusion);
+	page().pressPreset(); // TOP: the hole at X105 Y15 is a point
+	const lv_point_t p = page().view().canvasPoint(105.0f, 15.0f, -10.0f);
+	page().view().tapAt(p.x + 3, p.y - 2); // a finger is not exact
+	EXPECT_TRUE(page().view().hasCutPoint());
+	EXPECT_NEAR(page().view().cutX(), 105.0f, 0.01f);
+	EXPECT_NEAR(page().view().cutY(), 15.0f, 0.01f);
+	EXPECT_EQ(page().selected(), 4); // DRILL, the tapped move's operation
+	EXPECT_TRUE(lv_test_screenshot_compare("cnc/preview_cut_point_top.png"));
+
+	page().pressPreset(); // FRONT is now a section along X through the point
+	EXPECT_EQ(page().presetText(), "CUT X");
+	EXPECT_EQ(page().cutText(), "CUT X  ·  Y 15");
+	EXPECT_TRUE(page().view().sectionShown());
+	EXPECT_TRUE(lv_test_screenshot_compare("cnc/preview_cut_x.png"));
+	page().pressPreset();
+	EXPECT_EQ(page().presetText(), "CUT Y");
+	EXPECT_EQ(page().cutText(), "CUT Y  ·  X 105");
+	EXPECT_TRUE(lv_test_screenshot_compare("cnc/preview_cut_y.png"));
+
+	page().pressPreset(); // ISO: a crosshair on the hole
+	EXPECT_EQ(page().presetText(), "ISO");
+	EXPECT_EQ(page().cutText(), "");
+	page().view().tapAt(6, 6); // away from every move: no cut point
+	EXPECT_FALSE(page().view().hasCutPoint());
+	EXPECT_EQ(page().selected(), 4); // the operation stays
+	page().pressPreset();
+	page().pressPreset();
+	EXPECT_EQ(page().presetText(), "FRONT");
+}
+
+TEST_F(TestCncJobPreview, SectionsAlsoWithoutPart)
+{
+	makeView(Fusion); // PART off
+	page().pressDown();
+	page().pressOp(2); // DRILL selected: its hole wins over the facing pass on top of it
+	page().pressPreset();
+	const lv_point_t p = page().view().canvasPoint(15.0f, 65.0f, -10.0f);
+	page().view().tapAt(p.x, p.y);
+	EXPECT_TRUE(page().view().hasCutPoint());
+	page().pressPreset();
+	EXPECT_TRUE(page().view().sectionShown()); // a section always shows the simulated part
+	EXPECT_EQ(page().cutText(), "CUT X  ·  Y 65");
+	EXPECT_EQ(page().view().stockMap().lastOp, 4);
+}
+
+TEST_F(TestCncJobPreview, ANewFileClearsTheCutPoint)
+{
+	JobPreviewPage::SetPartDefault(true);
+	makeView(Fusion);
+	page().pressPreset();
+	const lv_point_t p = page().view().canvasPoint(105.0f, 65.0f, -10.0f);
+	page().view().tapAt(p.x, p.y);
+	EXPECT_TRUE(page().view().hasCutPoint());
+	path = FreeCad;
+	page().tick();
+	EXPECT_EQ(page().fileText(), "plate_freecad.nc");
+	EXPECT_FALSE(page().view().hasCutPoint());
 }
 
 TEST_F(TestCncJobPreview, ToolpathBoxWithoutStockLine)
@@ -311,6 +454,72 @@ TEST_F(TestCncJobPreview, RunningOperationIsMarkedAndFollowed)
 	lv_tick_inc(JobPreviewPage::ManualSelectHoldMs + 100);
 	page().setJobPosition((uint32_t)text.find("(Drill4)") + 60);
 	EXPECT_EQ(page().selected(), 0); // same operation: nothing new to follow
+	// The job ends: no running operation any more, without another position update
+	view->getPresenter()->newStatus(OM::PrinterStatus::idle);
+	page().tick();
+	EXPECT_EQ(page().runningOp(), -1);
+	EXPECT_EQ(page().opButtonText(2).find("RUN"), std::string::npos);
+}
+
+// A running job: the moves already run in the done colour (only the new ones drawn as it goes on); PART as
+// the finished operations left the part, the running one added when it is finished
+TEST_F(TestCncJobPreview, ProgressOfTheRunningJob)
+{
+	JobPreviewPage::SetPartDefault(true);
+	makeView(Fusion);
+	const std::string text = readFile("tests/object_model/cnc/gcode/bracket_fusion.nc");
+	view->getPresenter()->newStatus(OM::PrinterStatus::processing);
+	page().setJobFile(Fusion);
+	view->showSubTab(V::JobPreviewTab);
+	page().tick();
+	const auto program = PreviewSource::Current().program;
+	ASSERT_TRUE(program != nullptr);
+	const uint32_t opStart = program->ops[1].fileStart;
+	const uint32_t opEnd = program->ops[2].fileStart;
+	const uint32_t half = opStart + (opEnd - opStart) / 2;
+	page().setJobPosition(half); // halfway through the adaptive clearing
+	EXPECT_EQ(page().runningOp(), 1);
+	EXPECT_EQ(page().view().done(), Gcode::PointsBefore(*program, half));
+	EXPECT_GT(page().view().done(), program->ops[1].firstPoint);
+	EXPECT_EQ(page().view().partOp(), 0); // the facing pass only: the running operation is not finished
+	EXPECT_TRUE(lv_test_screenshot_compare("cnc/preview_progress.png"));
+	page().setJobPosition(opEnd + 10); // the next operation
+	EXPECT_EQ(page().runningOp(), 2);
+	EXPECT_EQ(page().view().partOp(), 1); // the adaptive clearing is in the part now
+	page().pressOp(0);					  // another operation by hand: the part as usual
+	EXPECT_EQ(page().view().partOp(), page().selected());
+	view->getPresenter()->newStatus(OM::PrinterStatus::idle);
+	page().tick();
+	EXPECT_EQ(page().view().done(), 0u); // the job ended
+	JobPreviewPage::SetPartDefault(false);
+}
+
+// Drawing only the newly run moves gives the same picture as drawing it all again
+TEST_F(TestCncJobPreview, ProgressDrawnStepByStepMatchesAFullDraw)
+{
+	makeView(Fusion);
+	view->getPresenter()->newStatus(OM::PrinterStatus::processing);
+	page().setJobFile(Fusion);
+	view->showSubTab(V::JobPreviewTab);
+	page().tick();
+	const auto program = PreviewSource::Current().program;
+	ASSERT_TRUE(program != nullptr);
+	const uint32_t a = program->ops[1].fileStart, b = program->ops[2].fileStart;
+	for (int i = 1; i <= 8; ++i)
+	{
+		page().setJobPosition(a + (b - a) * (uint32_t)i / 9); // step by step
+	}
+	const std::vector<uint32_t> stepped = page().view().pixels();
+	page().view().redraw();
+	const std::vector<uint32_t>& full = page().view().pixels();
+	ASSERT_EQ(stepped.size(), full.size());
+	size_t differ = 0;
+	for (size_t i = 0; i < full.size(); ++i)
+	{
+		differ += (stepped[i] != full[i]) ? 1 : 0;
+	}
+	std::printf("[progress] %zu of %zu pixels differ\n", differ, full.size());
+	EXPECT_EQ(differ, 0u); // the done moves on top in both
 }
 
 TEST_F(TestCncJobPreview, RunningJobFileWinsOverTheList)
@@ -323,6 +532,176 @@ TEST_F(TestCncJobPreview, RunningJobFileWinsOverTheList)
 	view->showSubTab(V::JobPreviewTab);									   // back to PREVIEW
 	page().tick();
 	EXPECT_EQ(page().fileText(), "bracket_fusion.nc");
+}
+
+// SETTINGS > PREVIEW IN JOB: ANY FILE: another file during a job, RUNNING goes back; the file shown
+// before is kept, so going back and forth downloads nothing
+TEST_F(TestCncJobPreview, NextJobDuringARunningJob)
+{
+	makeView(FreeCad);
+	EXPECT_EQ(downloads, 1);
+	page().setJobFile(Fusion);
+	view->getPresenter()->newStatus(OM::PrinterStatus::processing);
+	view->showSubTab(V::JobPreviewTab);
+	page().tick();
+	EXPECT_EQ(page().fileText(), "bracket_fusion.nc");
+	EXPECT_FALSE(page().runningShown());
+	EXPECT_EQ(downloads, 2);
+
+	page().openListFile(); // the JOB popup's check on plate_freecad.nc
+	EXPECT_EQ(page().fileText(), "plate_freecad.nc");
+	EXPECT_EQ(page().opButtonText(0).substr(0, 2), "1|");
+	EXPECT_TRUE(page().runningShown());
+	EXPECT_FALSE(page().runAvailable()); // grey: a job runs
+	EXPECT_EQ(page().runningOp(), -1);	 // not the running file
+	EXPECT_EQ(downloads, 2);			 // kept
+	EXPECT_TRUE(lv_test_screenshot_compare("cnc/preview_next_job.png"));
+	page().pressRun();
+	EXPECT_EQ(Popup::Title(), "ALERT !");
+	Popup::Close();
+
+	page().pressRunning();
+	EXPECT_EQ(page().fileText(), "bracket_fusion.nc");
+	EXPECT_FALSE(page().runningShown());
+	EXPECT_EQ(downloads, 2);
+	page().openListFile();
+	EXPECT_EQ(page().fileText(), "plate_freecad.nc");
+	EXPECT_EQ(downloads, 2);
+
+	// A new job (or the end of this one): PREVIEW follows the job again
+	view->getPresenter()->newStatus(OM::PrinterStatus::idle);
+	page().tick();
+	EXPECT_EQ(page().fileText(), "plate_freecad.nc"); // JOB LIST's file
+	EXPECT_FALSE(page().runningShown());
+	view->getPresenter()->newStatus(OM::PrinterStatus::processing);
+	view->showSubTab(V::JobPreviewTab);
+	page().tick();
+	EXPECT_EQ(page().fileText(), "bracket_fusion.nc");
+}
+
+TEST_F(TestCncJobPreview, PreviewInJobRunningJobOnly)
+{
+	Panel::SetPreviewDuringJob(Panel::PreviewInJob::RunningJob);
+	makeView(FreeCad);
+	page().setJobFile(Fusion);
+	view->getPresenter()->newStatus(OM::PrinterStatus::processing);
+	view->showSubTab(V::JobPreviewTab);
+	page().openListFile();
+	EXPECT_EQ(page().fileText(), "bracket_fusion.nc");
+	EXPECT_FALSE(page().runningShown());
+}
+
+// OFF: nothing is downloaded while a job runs; a file PREVIEW already holds is still shown
+TEST_F(TestCncJobPreview, PreviewInJobOff)
+{
+	Panel::SetPreviewDuringJob(Panel::PreviewInJob::Off);
+	makeView(FreeCad);
+	EXPECT_EQ(downloads, 1);
+	page().setJobFile(Fusion);
+	view->getPresenter()->newStatus(OM::PrinterStatus::processing);
+	view->showSubTab(V::JobPreviewTab);
+	page().tick();
+	EXPECT_EQ(page().message(), "PREVIEW is off while a job runs\n(SETTINGS > PREVIEW IN JOB)");
+	EXPECT_EQ(page().fileText(), "bracket_fusion.nc");
+	EXPECT_EQ(page().opButtonText(0), "");
+	EXPECT_EQ(downloads, 1);
+	EXPECT_TRUE(lv_test_screenshot_compare("cnc/preview_off_in_job.png"));
+	page().openListFile(); // not with OFF
+	EXPECT_EQ(page().fileText(), "bracket_fusion.nc");
+	EXPECT_EQ(downloads, 1);
+
+	// The job ends: downloads again
+	view->getPresenter()->newStatus(OM::PrinterStatus::idle);
+	page().tick();
+	EXPECT_EQ(page().message(), "");
+	EXPECT_EQ(page().fileText(), "plate_freecad.nc");
+
+	// The job's file opened before RUN: shown, nothing downloaded
+	path = Fusion;
+	page().tick();
+	EXPECT_EQ(downloads, 2);
+	view->getPresenter()->newStatus(OM::PrinterStatus::processing);
+	view->showSubTab(V::JobPreviewTab);
+	page().tick();
+	EXPECT_EQ(page().message(), "");
+	EXPECT_EQ(page().fileText(), "bracket_fusion.nc");
+	EXPECT_EQ(downloads, 2);
+}
+
+// A file uploaded again under the same name (JOB LIST shows another size / date): read again when it is
+// opened again from JOB LIST; the same file is not
+TEST_F(TestCncJobPreview, ChangedFileIsReadAgainWhenOpenedAgain)
+{
+	PreviewSource::Stamp stamp{12345, "2026-10-08T10:00:00"};
+	makeView("");
+	page().setStampOf([&stamp](const std::string&) { return stamp; });
+	path = Fusion;
+	page().tick();
+	EXPECT_EQ(downloads, 1);
+	page().openListFile(); // the JOB popup's check again: unchanged
+	EXPECT_EQ(downloads, 1);
+	stamp.date = "2026-10-08T11:30:00"; // uploaded again
+	page().tick();
+	EXPECT_EQ(downloads, 1); // not by itself
+	page().openListFile();
+	EXPECT_EQ(downloads, 2);
+	EXPECT_EQ(page().fileText(), "bracket_fusion.nc");
+	EXPECT_EQ(page().message(), "");
+}
+
+// Over the size limit (from JOB LIST): refused before any download
+TEST_F(TestCncJobPreview, TooLargeIsRefusedBeforeTheDownload)
+{
+	makeView("");
+	page().setStampOf([](const std::string&) { return PreviewSource::Stamp{40u * 1024u * 1024u, "x"}; });
+	path = Fusion;
+	page().tick();
+	EXPECT_EQ(downloads, 0);
+	EXPECT_EQ(page().message(), "bracket_fusion.nc is too large for PREVIEW (over 32 MB)");
+	EXPECT_TRUE(page().runTileShown()); // it can still be started
+}
+
+// SPLIT OPERATIONS changed while a job runs with PREVIEW IN JOB: OFF: read again only after the job
+TEST_F(TestCncJobPreview, SplitChangeWaitsForTheJobWithPreviewOff)
+{
+	Panel::SetPreviewDuringJob(Panel::PreviewInJob::Off);
+	makeView(Fusion);
+	page().setJobFile(Fusion);
+	view->getPresenter()->newStatus(OM::PrinterStatus::processing);
+	view->showSubTab(V::JobPreviewTab);
+	page().tick();
+	EXPECT_EQ(downloads, 1);
+	Panel::SetPreviewToolChangesOnly(true);
+	page().tick();
+	EXPECT_EQ(downloads, 1);										 // not during the job
+	EXPECT_EQ(page().opButtonText(2).substr(0, 12), "3|2D|CONTOUR"); // still split as it was read
+	view->getPresenter()->newStatus(OM::PrinterStatus::idle);
+	view->showSubTab(V::JobPreviewTab);
+	page().tick();
+	EXPECT_EQ(downloads, 2); // now with the new setting
+	EXPECT_EQ(page().opButtonText(2), "3|POCKET|FINISH|T3");
+	Panel::SetPreviewToolChangesOnly(false);
+}
+
+// The machine's tool over the drawing: shown in the selected operation's work offset, follows the position
+TEST_F(TestCncJobPreview, ToolMarker)
+{
+	makeView(Fusion);
+	page().tick();
+	EXPECT_TRUE(page().view().toolShown()); // G54 active, the job in G54
+	const lv_point_t before = page().view().toolTip();
+	EXPECT_EQ(before.x, page().view().canvasPoint(12.345f, -5.5f, 3.2f).x);
+	State::SetWorkPosition(0, 60.0f); // X moves
+	page().tick();
+	const lv_point_t after = page().view().toolTip();
+	EXPECT_EQ(after.x, page().view().canvasPoint(60.0f, -5.5f, 3.2f).x);
+	EXPECT_NE(after.x, before.x);
+	State::SetActiveWorkplace(1); // G55: not the drawing's coordinates
+	page().tick();
+	EXPECT_FALSE(page().view().toolShown());
+	State::SetActiveWorkplace(0);
+	page().tick();
+	EXPECT_TRUE(page().view().toolShown());
 }
 
 // The real download (rr_connect, rr_download with the session key, rr_disconnect) against a web server
@@ -470,4 +849,26 @@ TEST_F(TestCncJobPreview, SplitOperationsSetting)
 	EXPECT_EQ(page().opButtonText(1), "2|ADAPT|CLEAR|T2|!"); // with the contour, below the stock
 	EXPECT_EQ(page().opButtonText(2), "3|POCKET|FINISH|T3");
 	Panel::SetPreviewToolChangesOnly(false);
+}
+
+// How long the simulation and one PART frame take (printed; the panel is roughly 10x slower)
+TEST_F(TestCncJobPreview, PartTiming)
+{
+	JobPreviewPage::SetPartDefault(true);
+	makeView(Fusion);
+	page().pressDown();
+	page().pressOp(2); // all 5 operations simulated
+	const auto t0 = std::chrono::steady_clock::now();
+	for (int k = 0; k < 10; ++k)
+	{
+		page().view().redraw();
+	}
+	const auto t1 = std::chrono::steady_clock::now();
+	const double frameMs = std::chrono::duration<double, std::milli>(t1 - t0).count() / 10.0;
+	std::printf("[timing] simulation %u ms, ISO PART frame %.1f ms, cells %d x %d\n",
+				page().view().simMs(),
+				frameMs,
+				page().view().stockMap().nx,
+				page().view().stockMap().ny);
+	EXPECT_LT(frameMs, 500.0);
 }

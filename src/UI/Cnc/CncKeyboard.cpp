@@ -67,6 +67,20 @@ namespace UI::Cnc::Keyboard
 		}
 
 		// The end of the text (where the cursor is) when it is wider than the field
+		// At most n bytes, never half a UTF-8 character
+		std::string utf8Prefix(const std::string& text, size_t n)
+		{
+			if (text.size() <= n)
+			{
+				return text;
+			}
+			while (n > 0 && ((unsigned char)text[n] & 0xC0) == 0x80)
+			{
+				--n;
+			}
+			return text.substr(0, n);
+		}
+
 		void showText()
 		{
 			if (s_textLabel == nullptr)
@@ -83,7 +97,10 @@ namespace UI::Cnc::Keyboard
 				{
 					break;
 				}
-				++p;
+				do
+				{
+					++p; // whole UTF-8 characters
+				} while (p < s_text.size() && ((unsigned char)s_text[p] & 0xC0) == 0x80);
 			}
 			lv_label_set_text(s_textLabel, (s_text.substr(p) + "_").c_str());
 		}
@@ -304,9 +321,24 @@ namespace UI::Cnc::Keyboard
 	void Open(const std::string& text, Client client, int owner)
 	{
 		UI_LOCK();
+		if (IsOpen())
+		{
+			// Another client takes the keyboard (e.g. a machine prompt over CONSOLE): the one before is told
+			// it is gone (its own client, not the new one)
+			Client before = std::move(s_client);
+			s_client = Client();
+			s_closing = true;
+			Popup::Close();
+			s_closing = false;
+			s_open = false;
+			if (before.gone)
+			{
+				before.gone();
+			}
+		}
 		s_client = std::move(client);
 		s_owner = owner;
-		s_text = text.substr(0, limit());
+		s_text = utf8Prefix(text, limit());
 		s_symbols = false;
 		s_lower = false;
 		s_upEnabled = s_downEnabled = false;
@@ -357,7 +389,7 @@ namespace UI::Cnc::Keyboard
 
 	void SetText(const std::string& text)
 	{
-		s_text = text.substr(0, limit());
+		s_text = utf8Prefix(text, limit());
 		showText();
 	}
 
@@ -373,7 +405,15 @@ namespace UI::Cnc::Keyboard
 	{
 		if (IsOpen() && !s_text.empty())
 		{
-			s_text.pop_back();
+			// a whole UTF-8 character (a machine prompt's default text may have "°" or "é")
+			while (!s_text.empty() && ((unsigned char)s_text.back() & 0xC0) == 0x80)
+			{
+				s_text.pop_back();
+			}
+			if (!s_text.empty())
+			{
+				s_text.pop_back();
+			}
 			changed();
 		}
 	}

@@ -11,6 +11,9 @@
 #include <algorithm>
 #include <cmath>
 #include <fmt/format.h>
+#include <functional>
+#include <mutex>
+#include <thread>
 #include <vector>
 
 namespace UI::Cnc::State
@@ -84,7 +87,6 @@ namespace UI::Cnc::State
 			case OM::PrinterStatus::resuming:
 			case OM::PrinterStatus::simulating:
 			case OM::PrinterStatus::cancelling:
-			case OM::PrinterStatus::starting:
 				return true;
 			default:
 				return false;
@@ -106,7 +108,7 @@ namespace UI::Cnc::State
 				Popup::Refuse("Locked while a job is running."); // CUSTOM 1: a job started while the question was open
 				return;
 			}
-			Send(fmt::format("M98 P\"{:s}\"\n", s_customMacros[slot]));
+			Send(fmt::format("M98 P\"{:s}\"\n", Quoted(s_customMacros[slot])));
 		}
 	} // namespace
 
@@ -145,9 +147,9 @@ namespace UI::Cnc::State
 		case OM::PrinterStatus::paused:
 		case OM::PrinterStatus::resuming:
 		case OM::PrinterStatus::cancelling:
-		case OM::PrinterStatus::starting:
 			flag = true;
 			break;
+		// starting: the firmware starts up (config.g), not a job (PanelDue: configuring)
 		case OM::PrinterStatus::changingTool:
 		case OM::PrinterStatus::busy:
 		case OM::PrinterStatus::connecting:
@@ -694,5 +696,61 @@ namespace UI::Cnc::State
 		s_probeListeners.clear();
 		s_sendHook = nullptr;
 		Settings::Reset();
+	}
+
+	std::string Quoted(std::string_view text)
+	{
+		std::string out;
+		out.reserve(text.size() + 4);
+		for (char c : text)
+		{
+			if (c == '"' || c == '\'')
+			{
+				out += c;
+			}
+			out += c;
+		}
+		return out;
+	}
+
+	namespace
+	{
+		std::mutex s_queueMutex;
+		std::vector<std::function<void()>> s_queue;
+		std::thread::id s_uiThread;
+		bool s_uiThreadSet = false;
+	} // namespace
+
+	void SetUiThread()
+	{
+		std::lock_guard<std::mutex> lock(s_queueMutex);
+		s_uiThread = std::this_thread::get_id();
+		s_uiThreadSet = true;
+	}
+
+	void RunOnUi(std::function<void()> fn)
+	{
+		{
+			std::lock_guard<std::mutex> lock(s_queueMutex);
+			if (s_uiThreadSet && std::this_thread::get_id() != s_uiThread)
+			{
+				s_queue.push_back(std::move(fn));
+				return;
+			}
+		}
+		fn();
+	}
+
+	void RunQueued()
+	{
+		std::vector<std::function<void()>> todo;
+		{
+			std::lock_guard<std::mutex> lock(s_queueMutex);
+			todo.swap(s_queue);
+		}
+		for (auto& fn : todo)
+		{
+			fn();
+		}
 	}
 } // namespace UI::Cnc::State

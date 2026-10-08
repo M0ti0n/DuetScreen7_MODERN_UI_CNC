@@ -47,6 +47,7 @@ namespace UI::Cnc
 			PSound,
 			PConnection,
 			PSplitOps,
+			PPreviewInJob,
 			PAbout,
 			NumPanelTiles
 		};

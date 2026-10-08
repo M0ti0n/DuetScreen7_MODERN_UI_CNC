@@ -14,6 +14,7 @@
 #include "test_utils/UiTestSuite.h"
 #include <gtest/gtest.h>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace UI::Cnc;
@@ -401,4 +402,30 @@ TEST_F(TestCncControl, FeedTileJogFeedPresets)
 	Popup::PressChoice(0);
 	Popup::PressCancel();
 	EXPECT_EQ(State::JogFeed(), 1000u);
+}
+
+// RRF "starting": the firmware starts up (config.g) after a reset; not a job (PanelDue: configuring)
+TEST_F(TestCncControl, FirmwareStartingIsNotAJob)
+{
+	State::StatusChanged(OM::PrinterStatus::idle);
+	State::StatusChanged(OM::PrinterStatus::starting);
+	EXPECT_FALSE(State::JobInProgress());
+	EXPECT_FALSE(State::JobActive());
+	State::StatusChanged(OM::PrinterStatus::idle);
+	EXPECT_FALSE(State::JobInProgress());
+}
+
+// Machine data handled on the receive thread is queued and run by the UI thread (never under the UI lock
+// on the receive thread: a USB reconnect on the UI thread joins that thread)
+TEST_F(TestCncControl, ReceiveThreadWorkRunsOnTheUiThread)
+{
+	State::SetUiThread(); // as the view does
+	int ran = 0;
+	std::thread receive([&ran] { State::RunOnUi([&ran] { ++ran; }); });
+	receive.join();
+	EXPECT_EQ(ran, 0); // queued
+	State::RunQueued();
+	EXPECT_EQ(ran, 1);
+	State::RunOnUi([&ran] { ++ran; }); // on the UI thread: at once
+	EXPECT_EQ(ran, 2);
 }

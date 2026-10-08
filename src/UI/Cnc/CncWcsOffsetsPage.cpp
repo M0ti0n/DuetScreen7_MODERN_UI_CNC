@@ -9,6 +9,7 @@
 #include "CncPopup.h"
 #include "CncState.h"
 #include "CncTheme.h"
+#include "ObjectModel/Axis.h"
 #include <cmath>
 #include <fmt/format.h>
 #include <vector>
@@ -439,9 +440,14 @@ namespace UI::Cnc
 			Popup::Refuse("Pause the job to apply the offset step.");
 			return;
 		}
-		// Fold the offset step into the active WCS Z on the Duet, from its own current values
-		State::Send("G10 L2 P{move.workplaceNumber + 1} "
-					"Z{move.axes[2].workplaceOffsets[move.workplaceNumber] + move.axes[2].babystep}\n");
+		// Fold the offset step into the active WCS Z on the Duet, from its own current values (Z found by its
+		// letter: it need not be axis 2)
+		const auto z = OM::Move::GetAxisByLetter('Z');
+		const size_t zi = z ? z->index : 2;
+		State::Send(
+			fmt::format("G10 L2 P{{move.workplaceNumber + 1}} "
+						"Z{{move.axes[{0:d}].workplaceOffsets[move.workplaceNumber] + move.axes[{0:d}].babystep}}\n",
+						zi));
 		State::Send("M290 R0 Z0\n");
 		State::MarkOffsetsUnsaved();
 	}

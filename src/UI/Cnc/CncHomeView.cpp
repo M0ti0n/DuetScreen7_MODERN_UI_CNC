@@ -43,6 +43,8 @@ namespace UI
 	{
 		ZoneScoped;
 		UI_LOCK();
+		Cnc::State::SetUiThread(); // machine data from the receive thread is queued for this one
+		m_queueTimer = lv_timer_create([](lv_timer_t*) { Cnc::State::RunQueued(); }, 20, nullptr);
 		Cnc::Panel::Load();	   // the accent colour, before anything is built
 		Cnc::Settings::Init(); // the machine settings (global.cnc*) from the object model
 		Cnc::Messages::Init(); // display messages (M117)
@@ -65,6 +67,15 @@ namespace UI
 			Nav::X(NumPages), Nav::Y, Nav::Tile, Nav::Tile, [this] { getPresenter()->emergencyStop(); });
 		Cnc::State::AddJobListener([this] { setZeroLocked(Cnc::State::JobActive()); });
 		Cnc::State::AddSpindleListener([this] { setSpindle(Cnc::State::SpindleRpm(), Cnc::State::SpindleRunning()); });
+	}
+
+	CncHomeView::~CncHomeView()
+	{
+		UI_LOCK();
+		if (m_queueTimer != nullptr)
+		{
+			lv_timer_delete(m_queueTimer);
+		}
 	}
 
 	void CncHomeView::setZeroLocked(bool locked)
@@ -537,7 +548,13 @@ namespace UI
 		m_jobList.create(m_content[PageJob][JobListTab], CompactContentTop);
 		m_jobPreview.create(m_content[PageJob][JobPreviewTab], CompactContentTop);
 		m_jobPreview.setListPath([this] { return m_jobList.selectedPath(); });
-		m_jobList.onPreviewRequest([this] { showJobPreview(); });
+		m_jobPreview.setStampOf([this](const std::string& path) { return m_jobList.stampOf(path); });
+		m_jobList.onPreviewRequest(
+			[this]
+			{
+				m_jobPreview.openListFile(); // also during a job (SETTINGS > PREVIEW IN JOB)
+				showJobPreview();
+			});
 		m_jobStatus.create(m_content[PageJob][JobStatusTab], CompactContentTop);
 		m_jobStatus.onShowRequest([this] { showJobStatus(); });
 		m_macros.create(m_content[PageMacros][0], CompactContentTop);

@@ -40,8 +40,16 @@ namespace UI::Cnc::Popup
 	// Confirmation: title, information lines, X and check. onOk runs on the check mark.
 	void Confirm(std::string_view title, const std::vector<std::string>& lines, Handler onOk);
 	// The same with a trash button left of X (JOB LIST: delete), as the Modern UI's START PRINT popup:
-	// trash / X / check. onTrash runs on the trash can.
-	void ConfirmWithTrash(std::string_view title, const std::vector<std::string>& lines, Handler onTrash, Handler onOk);
+	// trash / X / check. onTrash runs on the trash can. okAvailable false: the check is grey (onOk still runs
+	// on it, to say why).
+	void ConfirmWithTrash(std::string_view title,
+						  const std::vector<std::string>& lines,
+						  Handler onTrash,
+						  Handler onOk,
+						  bool okAvailable = true);
+
+	// Confirm in the warning look (amber title with a triangle, amber text): RUN with warnings
+	void ConfirmWarning(std::string_view title, const std::vector<std::string>& lines, Handler onOk);
 
 	// ALERT ! with the reason (word-wrapped), only X. Used for every refused action.
 	void Alert(std::string_view text);
@@ -172,6 +180,13 @@ namespace UI::Cnc::Popup
 	void PressOk();
 	void PressCancel();
 	bool HasTrash(); // ConfirmWithTrash is open
+	bool OkGreyed(); // the open popup's check is grey
+	bool WarningLook(); // the open popup has the warning look
+	// Popups opened for a machine message box (M291): closed when the machine reports no box any more.
+	// Other popups (M117 MESSAGE, JOB DONE, ...) are not.
+	uint32_t OpenCount();  // changes with every popup opened
+	void MarkMachineBox(); // the open popup belongs to the machine's message box
+	bool IsMachineBoxOpen();
 	void PressTrash();
 	bool IsChooseOpen();
 	size_t ChoiceSelected();

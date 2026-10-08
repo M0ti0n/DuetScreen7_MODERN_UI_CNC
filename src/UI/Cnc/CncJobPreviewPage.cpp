@@ -70,20 +70,24 @@ namespace UI::Cnc
 																			 : std::string();
 		}
 
-		const char* presetName(PreviewView::Preset p)
+		const char* presetName(const PreviewView& v)
 		{
-			switch (p)
+			switch (v.preset())
 			{
 			case PreviewView::Preset::Top:
 				return "TOP";
 			case PreviewView::Preset::Front:
-				return "FRONT";
+				return v.hasCutPoint() ? "CUT X" : "FRONT";
+			case PreviewView::Preset::Side:
+				return v.hasCutPoint() ? "CUT Y" : "SIDE";
 			case PreviewView::Preset::Free:
 				return "3D";
 			default:
 				return "ISO";
 			}
 		}
+
+		bool s_part = true; // PART, kept while the panel runs
 	} // namespace
 
 	JobPreviewPage::~JobPreviewPage()
@@ -103,7 +107,7 @@ namespace UI::Cnc
 		lv_obj_remove_flag(m_root, LV_OBJ_FLAG_CLICKABLE);
 
 		// 3D view and its overlays
-		m_view.create(m_root, ViewX, 0, ViewW, ViewH, InsetTop, InsetBottom);
+		m_view.create(m_root, ViewX, 0, ViewW, ViewH, InsetTop, InsetBottom, ButtonW + OverlayInset + 6);
 		lv_obj_t* v = m_view.obj();
 		const int32_t inner = ViewW - 2 * CardBorder;
 		const int32_t bx = inner - OverlayInset - ButtonW;
@@ -139,8 +143,28 @@ namespace UI::Cnc
 		m_presetBtn.onPress([this] { pressPreset(); });
 		m_rapidBtn.create(v, bx, 8 + ButtonH + ButtonGap, ButtonW, ButtonH, "G0", Font::Small());
 		m_rapidBtn.onPress([this] { pressRapids(); });
+		m_partBtn.create(v, bx, 8 + 2 * (ButtonH + ButtonGap), ButtonW, ButtonH, "PART", Font::Small());
+		m_partBtn.onPress([this] { pressPart(); });
+		m_runningBtn.create(v, bx, 8 + 3 * (ButtonH + ButtonGap), ButtonW, ButtonH, "RUNNING", Font::Tiny());
+		m_runningBtn.setFilled(Colour::Accent());
+		m_runningBtn.onPress([this] { pressRunning(); });
+		m_runningBtn.show(false);
+		m_view.setPart(s_part);
+		m_partBtn.setToggle(s_part);
+		m_cutLabel =
+			CreateLabel(v, OverlayInset, InsetTop + 2, 320, 24, Font::Tiny(), Colour::Accent(), LV_TEXT_ALIGN_LEFT, "");
+		lv_obj_add_flag(m_cutLabel, LV_OBJ_FLAG_HIDDEN);
+		m_view.onPick(
+			[this](int op, float, float)
+			{
+				if (op >= 0 && op != m_selected)
+				{
+					select(op, true); // the tapped move's operation
+				}
+				updateViewLabels();
+			});
 		m_view.onDoubleTap([this] { doubleTap(); });
-		m_view.onPresetChanged([this] { m_presetBtn.setText(presetName(m_view.preset())); });
+		m_view.onPresetChanged([this] { updateViewLabels(); });
 
 		createStrip(m_root);
 		createInfo(m_root);
@@ -232,7 +256,26 @@ namespace UI::Cnc
 			Popup::Refuse("A job is already running.");
 			return;
 		}
-		AskRunJob(path); // the reason when it cannot start now
+		RunCheck check;
+		if (m_program && PreviewSource::Current().path == path) // the file is read: its warnings
+		{
+			for (int op = 0; op < (int)m_program->ops.size(); ++op)
+			{
+				const std::vector<Warning> w = warnings(op);
+				if (!w.empty())
+				{
+					check.warnedOps.push_back(op + 1);
+				}
+				for (const Warning& one : w)
+				{
+					if (!one.shortText.empty())
+					{
+						check.serious.push_back(fmt::format("Op {:d}: {:s}", op + 1, one.shortText));
+					}
+				}
+			}
+		}
+		AskRunJob(path, check); // the reason when it cannot start now
 	}
 
 	void JobPreviewPage::createStrip(lv_obj_t* root)
@@ -377,11 +420,68 @@ namespace UI::Cnc
 
 	std::string JobPreviewPage::wantedPath() const
 	{
+		const std::string list = m_listPath ? m_listPath() : std::string();
 		if (State::JobActive() && !m_jobFile.empty())
 		{
+			if (!m_showRunning && !list.empty() && Panel::PreviewDuringJob() == Panel::PreviewInJob::AnyFile)
+			{
+				return list; // another file, opened with the JOB popup's check
+			}
 			return m_jobFile;
 		}
-		return m_listPath ? m_listPath() : std::string();
+		return list;
+	}
+
+	bool JobPreviewPage::blocked(const std::string& path) const
+	{
+		return State::JobActive() && !path.empty() && Panel::PreviewDuringJob() == Panel::PreviewInJob::Off &&
+			   !PreviewSource::Has(path);
+	}
+
+	void JobPreviewPage::showBlocked(const std::string& path)
+	{
+		PreviewSource::Result r;
+		r.path = path;
+		r.status = PreviewSource::Status::NoFile;
+		apply(r);
+		showMessage("PREVIEW is off while a job runs\n(SETTINGS > PREVIEW IN JOB)");
+	}
+
+	void JobPreviewPage::followJobState()
+	{
+		const bool active = State::JobActive();
+		if (active != m_wasActive)
+		{
+			m_wasActive = active;
+			m_showRunning = true; // a job starts: PREVIEW follows it; it ends: JOB LIST's file
+			if (!active && m_running != -1)
+			{
+				m_running = -1; // the job ended: no operation runs (also without another position update)
+				UI_LOCK();
+				updateStrip();
+				updateProgress();
+			}
+		}
+	}
+
+	void JobPreviewPage::openListFile()
+	{
+		followJobState();	   // a job that started before this counts already
+		m_showRunning = false; // shown when the job allows it (wantedPath)
+		m_requested.clear();   // asked again: a file uploaded again under its name is read again
+		tick();
+	}
+
+	void JobPreviewPage::pressRunning()
+	{
+		followJobState();
+		m_showRunning = true;
+		tick();
+	}
+
+	bool JobPreviewPage::runningShown() const
+	{
+		return m_runningBtn.visible();
 	}
 
 	void JobPreviewPage::setShown(bool shown)
@@ -411,6 +511,7 @@ namespace UI::Cnc
 				m_running = -1;
 				updateStrip();
 			}
+			updateProgress();
 			return;
 		}
 		const int op = Gcode::OperationAt(*m_program, filePosition);
@@ -423,25 +524,96 @@ namespace UI::Cnc
 			}
 			updateStrip();
 		}
+		updateProgress();
+	}
+
+	// A running job in the view: the selected operation's moves already run in the done colour; PART as the
+	// operations finished so far left the part (the running one shows once it is finished)
+	void JobPreviewPage::updateProgress()
+	{
+		const bool running = m_program && m_running >= 0;
+		m_view.setPartLimit((running && m_selected == m_running) ? m_running - 1 : PreviewView::NoPartLimit);
+		m_view.setDone(running ? Gcode::PointsBefore(*m_program, m_jobPosition) : 0);
 	}
 
 	void JobPreviewPage::tick()
 	{
-		if (m_shown)
+		followJobState();
+		const bool active = m_wasActive;
+		const std::string path = wantedPath();
+		if (blocked(path))
 		{
-			const std::string path = wantedPath();
-			if (path != m_requested)
+			// PREVIEW IN JOB: OFF: nothing is downloaded while the job runs
+			if (!m_blocked || path != m_requested)
 			{
+				m_blocked = true;
 				m_requested = path;
-				PreviewSource::Request(path);
+				showBlocked(path);
 			}
 		}
-		if (PreviewSource::Generation() != m_generation)
+		else
 		{
-			m_generation = PreviewSource::Generation();
-			apply(PreviewSource::Current());
+			if (m_blocked)
+			{
+				m_blocked = false;
+				m_requested.clear();
+				m_generation = PreviewSource::Generation() - 1; // the file's state shown again
+			}
+			if (m_shown && path != m_requested)
+			{
+				m_requested = path;
+				PreviewSource::Request(path, m_stampOf ? m_stampOf(path) : PreviewSource::Stamp());
+			}
+			else if (m_shown && PreviewSource::CurrentIsStale() &&
+					 !(active && Panel::PreviewDuringJob() == Panel::PreviewInJob::Off))
+			{
+				PreviewSource::Reload(); // SPLIT OPERATIONS changed (OFF: not during a job)
+			}
+			if (PreviewSource::Generation() != m_generation)
+			{
+				m_generation = PreviewSource::Generation();
+				apply(PreviewSource::Current());
+			}
+		}
+		const bool running = active && !m_jobFile.empty() && !path.empty() && path != m_jobFile;
+		if (running != m_runningBtn.visible())
+		{
+			UI_LOCK();
+			m_runningBtn.show(running);
 		}
 		updateRunTile();
+		updateTool();
+		m_view.tick(); // a single tap on the view, once it is not a double tap
+	}
+
+	// The tool marker: where the machine's tool is, in the work coordinates the drawing uses. Shown when the
+	// active work offset is the selected operation's (G54 ... G59): the drawing is in that offset's coordinates.
+	void JobPreviewPage::updateTool()
+	{
+		bool show = m_program && m_selected >= 0 && (size_t)m_selected < m_program->ops.size();
+		float pos[3] = {0, 0, 0};
+		if (show)
+		{
+			const unsigned int wcs = m_program->ops[(size_t)m_selected].wcs; // 1 = G54
+			show = wcs >= 1 && State::ActiveWorkplace() + 1 == wcs;
+			const char letters[3] = {'X', 'Y', 'Z'};
+			for (int a = 0; a < 3 && show; ++a)
+			{
+				bool found = false;
+				for (size_t i = 0; i < State::AxisCount(); ++i)
+				{
+					if (State::AxisLetter(i) == letters[a])
+					{
+						pos[a] = State::WorkPosition(i);
+						found = true;
+						break;
+					}
+				}
+				show = found;
+			}
+		}
+		UI_LOCK();
+		m_view.setTool(show, pos[0], pos[1], pos[2]);
 	}
 
 	void JobPreviewPage::apply(const PreviewSource::Result& r)
@@ -483,6 +655,7 @@ namespace UI::Cnc
 		m_running = -1;
 		m_manual = false;
 		m_view.setProgram(m_program);
+		updateViewLabels(); // a new file: no cut point
 		lv_label_set_text(m_fileLabel, r.path.empty() ? "" : name.c_str());
 		updateOverlays();
 		updateStrip();
@@ -687,6 +860,7 @@ namespace UI::Cnc
 			m_first = op - NumOpButtons + 1;
 		}
 		m_view.setSelected(op);
+		updateProgress(); // PART: the running operation not yet, another one picked: as usual
 		updateStrip();
 		updateInfo();
 	}
@@ -718,7 +892,49 @@ namespace UI::Cnc
 	void JobPreviewPage::pressPreset()
 	{
 		m_view.nextPreset();
-		m_presetBtn.setText(presetName(m_view.preset()));
+		updateViewLabels();
+	}
+
+	void JobPreviewPage::SetPartDefault(bool on)
+	{
+		s_part = on;
+	}
+
+	void JobPreviewPage::pressPart()
+	{
+		s_part = !m_view.part();
+		m_view.setPart(s_part);
+		m_partBtn.setToggle(s_part);
+	}
+
+	void JobPreviewPage::updateViewLabels()
+	{
+		m_presetBtn.setText(presetName(m_view));
+		const std::string t = cutText();
+		lv_label_set_text(m_cutLabel, t.c_str());
+		if (t.empty())
+		{
+			lv_obj_add_flag(m_cutLabel, LV_OBJ_FLAG_HIDDEN);
+		}
+		else
+		{
+			lv_obj_remove_flag(m_cutLabel, LV_OBJ_FLAG_HIDDEN);
+		}
+	}
+
+	std::string JobPreviewPage::presetText() const
+	{
+		return presetName(m_view);
+	}
+
+	std::string JobPreviewPage::cutText() const
+	{
+		if (!m_view.sectionShown())
+		{
+			return "";
+		}
+		return (m_view.preset() == PreviewView::Preset::Front) ? fmt::format("CUT X  ·  Y {:s}", num(m_view.cutY()))
+															   : fmt::format("CUT Y  ·  X {:s}", num(m_view.cutX()));
 	}
 
 	void JobPreviewPage::pressRapids()
@@ -730,7 +946,7 @@ namespace UI::Cnc
 	void JobPreviewPage::doubleTap()
 	{
 		m_view.setPreset(PreviewView::Preset::Iso);
-		m_presetBtn.setText(presetName(m_view.preset()));
+		updateViewLabels();
 	}
 
 	void JobPreviewPage::pressMessage()
@@ -779,17 +995,20 @@ namespace UI::Cnc
 		if (p.stockFromFile && o.cutLength > 0 && o.zMin < p.stock.minZ - 0.01f)
 		{
 			out.push_back({fmt::format("Cuts {:s} mm below the stock bottom", num(p.stock.minZ - o.zMin)),
-						   fmt::format("(Z {:s}, stock {:s} mm)", num(o.zMin), num(p.stock.sizeZ()))});
+						   fmt::format("(Z {:s}, stock {:s} mm)", num(o.zMin), num(p.stock.sizeZ())),
+						   ""});
 		}
 		if (o.cutsWithSpindleOff)
 		{
-			out.push_back({"Cuts with the spindle off", "(no M3 / M4 before the cutting moves)"});
-		}
-		// A tool the machine does not have (once the tool table is known)
-		if (o.tool >= 0 && !State::Tools().empty() && State::FindTool(o.tool) == nullptr)
-		{
 			out.push_back(
-				{fmt::format("T{:d} is not in the tool table", o.tool), "(WCS > TOOLS lists the machine's tools)"});
+				{"Cuts with the spindle off", "(no M3 / M4 before the cutting moves)", "cuts with spindle off"});
+		}
+		// A tool the machine does not have (once the tool table is known), unless the file creates it (M563)
+		if (o.tool >= 0 && !State::Tools().empty() && State::FindTool(o.tool) == nullptr && !p.definesTool(o.tool))
+		{
+			out.push_back({fmt::format("T{:d} is not in the tool table", o.tool),
+						   "(WCS > TOOLS lists the machine's tools)",
+						   fmt::format("T{:d} not in the tool table", o.tool)});
 		}
 		// X / Y travel: machine = work + work offset (Z depends on the tool length offset: not checked)
 		if (!o.travel.empty && o.wcs >= 1 && o.wcs <= State::NumWcs)
@@ -835,7 +1054,8 @@ namespace UI::Cnc
 			}
 			if (!axes.empty())
 			{
-				out.push_back({fmt::format("Outside the {:s} travel", axes), fmt::format("(machine {:s})", limits)});
+				out.push_back(
+					{fmt::format("Outside the {:s} travel", axes), fmt::format("(machine {:s})", limits), ""});
 			}
 		}
 		return out;

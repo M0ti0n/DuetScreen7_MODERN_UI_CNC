@@ -152,6 +152,50 @@ namespace UI::Cnc::Gcode
 		}
 
 		// Tool type words -> short upper case type
+		// The included tip angle of a pointed tool from its text: Fusion "TAPER=45deg" (half angle),
+		// ";CNC_TOOL ... A=60", or "60°" / "60 deg" in the description. 0: not given.
+		float tipAngle(std::string_view text)
+		{
+			float v = 0;
+			if (keyValue(text, "TAPER=", v) && v > 0 && v < 180)
+			{
+				// Fusion: a drill's tip angle (118deg); a chamfer / engrave tool's taper from the axis (45deg)
+				const std::string u = upper(text);
+				return (u.find("DRILL") != std::string::npos || v >= 90) ? v : 2 * v;
+			}
+			if (keyValue(text, "A=", v) && v > 0 && v < 180)
+			{
+				return v;
+			}
+			const std::string u = upper(text);
+			for (size_t i = 0; i < u.size(); ++i)
+			{
+				if (!std::isdigit((unsigned char)u[i]) ||
+					(i > 0 && (std::isalnum((unsigned char)u[i - 1]) || u[i - 1] == '.')))
+				{
+					continue;
+				}
+				size_t p = i;
+				float n = 0;
+				if (!parseFloat(u, p, n))
+				{
+					continue;
+				}
+				size_t q = p;
+				while (q < u.size() && u[q] == ' ')
+				{
+					++q;
+				}
+				const bool degree = u.compare(q, 2, "\xC2\xB0") == 0 || u.compare(q, 3, "DEG") == 0;
+				if (degree && n > 0 && n < 180)
+				{
+					return n;
+				}
+				i = p;
+			}
+			return 0;
+		}
+
 		std::string toolTypeFrom(std::string_view text)
 		{
 			const std::string u = upper(text);
@@ -194,6 +238,8 @@ namespace UI::Cnc::Gcode
 		struct ToolInfo
 		{
 			float diameter = 0;
+			bool fileUnits = false; // D= in the file's units (inches after G20), not with "mm" in the text
+			float angle = 0;		// included tip angle from the text (degrees), 0: not given
 			std::string type;
 			std::string text; // as written
 		};
@@ -462,7 +508,12 @@ namespace UI::Cnc::Gcode
 				}
 				ToolInfo info;
 				float d = 0;
-				if (keyValue(s, "D=", d) || millimetres(s.substr(p), d))
+				if (keyValue(s, "D=", d))
+				{
+					info.diameter = d;
+					info.fileUnits = true;
+				}
+				else if (millimetres(s.substr(p), d))
 				{
 					info.diameter = d;
 				}
@@ -481,6 +532,7 @@ namespace UI::Cnc::Gcode
 				{
 					info.type = toolTypeFrom(s.substr(p));
 				}
+				info.angle = tipAngle(s);
 				// The description: Fusion's after the last " - ", else what follows the number (and ':')
 				{
 					const std::string rest(s.substr(p));
@@ -504,10 +556,15 @@ namespace UI::Cnc::Gcode
 				if (info.diameter > 0)
 				{
 					known.diameter = info.diameter;
+					known.fileUnits = info.fileUnits;
 				}
 				if (!info.type.empty())
 				{
 					known.type = info.type;
+				}
+				if (info.angle > 0)
+				{
+					known.angle = info.angle;
 				}
 			}
 
@@ -609,10 +666,12 @@ namespace UI::Cnc::Gcode
 					if (last.kind == kind && dx * dx + dy * dy + dz * dz < m_mergeTol * m_mergeTol)
 					{
 						last = {fx, fy, fz, kind};
+						m_prog.pointOffsets.back() = m_lineStart; // now from this line
 						return;
 					}
 				}
 				pts.push_back({fx, fy, fz, kind});
+				m_prog.pointOffsets.push_back(m_lineStart);
 				if (pts.size() >= m_nextGrow)
 				{
 					m_mergeTol = (m_mergeTol == 0.0f) ? 0.05f : m_mergeTol * 2.0f;
@@ -754,6 +813,12 @@ namespace UI::Cnc::Gcode
 				}
 				const double sa = m_st.pos[a], sb = m_st.pos[b], ea = end[a], eb = end[b];
 				double ca, cb;
+				if (hasR && std::hypot(ea - sa, eb - sb) < 1e-9)
+				{
+					// R with the end at the start: no circle is defined (RRF refuses it): a straight move
+					linear(target, known, false);
+					return;
+				}
 				if (hasR)
 				{
 					const double dxa = ea - sa, dxb = eb - sb;
@@ -845,6 +910,10 @@ namespace UI::Cnc::Gcode
 					if (info.type.empty())
 					{
 						info.type = toolTypeFrom(m_pendingToolText);
+					}
+					if (info.angle == 0)
+					{
+						info.angle = tipAngle(m_pendingToolText);
 					}
 					m_pendingToolText.clear();
 				}
@@ -986,6 +1055,26 @@ namespace UI::Cnc::Gcode
 				int toolWord = -2;
 				const double unit = m_st.inches ? 25.4 : 1.0;
 
+				// S and F of other commands (G4 S3 dwell, M42 P0 S1, M106 S255, M568 F...) are not the spindle
+				// speed or the feed
+				bool otherM = false, dwell = false;
+				for (const Word& w : words)
+				{
+					if (!w.hasValue)
+					{
+						continue;
+					}
+					if (w.letter == 'M')
+					{
+						const int m = (int)std::lround(w.value);
+						otherM = otherM || m < 3 || m > 9; // M3..M9: spindle, tool change, coolant
+					}
+					else if (w.letter == 'G' && std::lround(w.value * 10) == 40)
+					{
+						dwell = true;
+					}
+				}
+
 				// Modes first (G20 / G21 / G90 / G91 apply to the axis words of the same line)
 				for (const Word& w : words)
 				{
@@ -998,6 +1087,7 @@ namespace UI::Cnc::Gcode
 					{
 					case 200:
 						m_st.inches = true;
+						m_inchFile = true;
 						break;
 					case 210:
 						m_st.inches = false;
@@ -1078,10 +1168,16 @@ namespace UI::Cnc::Gcode
 						hasR = true;
 						break;
 					case 'F':
-						m_st.feed = (float)((double)w.value * u);
+						if (!otherM)
+						{
+							m_st.feed = (float)((double)w.value * u);
+						}
 						break;
 					case 'S':
-						m_st.spindle = w.value;
+						if (!otherM && !dwell)
+						{
+							m_st.spindle = w.value;
+						}
 						break;
 					case 'T':
 						toolWord = (int)std::lround(w.value);
@@ -1106,6 +1202,23 @@ namespace UI::Cnc::Gcode
 						else if (m == 9)
 						{
 							m_st.coolant = false;
+						}
+						else if (m == 563)
+						{
+							// The file creates a tool (M563 P<n>): it need not be in the machine's tool table
+							for (const Word& p : words)
+							{
+								if (p.letter == 'P' && p.hasValue)
+								{
+									const int t = (int)std::lround(p.value);
+									auto& d = m_prog.definedTools;
+									const auto at = std::lower_bound(d.begin(), d.end(), t);
+									if (at == d.end() || *at != t)
+									{
+										d.insert(at, t);
+									}
+								}
+							}
 						}
 						break;
 					}
@@ -1266,10 +1379,21 @@ namespace UI::Cnc::Gcode
 					auto it = m_tools.find(o.tool);
 					if (it != m_tools.end())
 					{
-						o.toolDiameter = it->second.diameter;
+						// Fusion's "(T1 D=0.25 ...)" in an inch program: inches, like the moves
+						const float scale = (it->second.fileUnits && m_inchFile) ? 25.4f : 1.0f;
+						o.toolDiameter = it->second.diameter * scale;
 						o.toolType = it->second.type;
+						// Pointed tools: the angle given, else the usual one; others are not pointed
+						const std::string& ty = o.toolType;
+						const bool vee = ty == "V-BIT" || ty == "CHAMFER" || ty == "ENGRAVE" || ty == "SPOT DRILL";
+						const bool drill = ty == "DRILL";
+						o.toolAngle = (vee || drill || ty.empty()) ? it->second.angle : 0.0f;
+						if (o.toolAngle == 0 && (vee || drill))
+						{
+							o.toolAngle = drill ? 118.0f : 90.0f;
+						}
 						o.toolText = it->second.text;
-						maxRadius = std::max(maxRadius, it->second.diameter / 2);
+						maxRadius = std::max(maxRadius, o.toolDiameter / 2);
 					}
 					if (o.tool >= 0 && std::find(tools.begin(), tools.end(), o.tool) == tools.end())
 					{
@@ -1307,6 +1431,7 @@ namespace UI::Cnc::Gcode
 			std::string m_pendingName, m_pendingToolText;
 			uint32_t m_pendingOffset = 0, m_lineStart = 0;
 			std::map<int, ToolInfo> m_tools;
+			bool m_inchFile = false; // G20 in the file
 			std::map<int, double> m_feedLength, m_plungeLength;
 			std::set<int> m_cutSpindles;			   // spindle speeds the operation has cut with
 			std::map<std::string, int> m_commentCount; // whole-line comments, how often
@@ -1322,6 +1447,11 @@ namespace UI::Cnc::Gcode
 			void init() { m_nextGrow = m_opt.maxPoints; }
 		};
 	} // namespace
+
+	bool Program::definesTool(int tool) const
+	{
+		return std::binary_search(definedTools.begin(), definedTools.end(), tool);
+	}
 
 	Program Parse(std::string_view text, const Options& options)
 	{
@@ -1433,6 +1563,12 @@ namespace UI::Cnc::Gcode
 			return fmt::format("{:d}:{:02d}:{:02d}", s / 3600, (s / 60) % 60, s % 60);
 		}
 		return fmt::format("{:d}:{:02d}", s / 60, s % 60);
+	}
+
+	uint32_t PointsBefore(const Program& program, uint32_t filePosition)
+	{
+		const auto& o = program.pointOffsets;
+		return (uint32_t)(std::lower_bound(o.begin(), o.end(), filePosition) - o.begin());
 	}
 
 	int OperationAt(const Program& program, uint32_t filePosition)

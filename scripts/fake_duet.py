@@ -18,7 +18,8 @@ Usage (two terminals, both inside WSL, from the repo root):
   ./out/build/CNC-Simulation-Release/DuetScreen     # then SETTINGS > CONNECTION > NETWORK: 127.0.0.1:8080
 
 Options: --port, --bind, --axes 3|4, --homed, --speed (time factor, 2 = twice as fast),
-         --sd DIR (the virtual SD card, default ~/fake_duet_sd), --reset-sd, --card1, --password, --quiet
+         --sd DIR (the virtual SD card, default ~/fake_duet_sd), --reset-sd, --card1, --password, --quiet,
+         --slow KB (file downloads at KB kilobytes per second, e.g. 300 for a Duet 2 WiFi)
 
 Only the Python 3 standard library is used. It is a test tool: it is not RepRapFirmware.
 """
@@ -60,6 +61,7 @@ SPINDLE_MAX = 24000
 INPUT_NAMES = ["HTTP", "Telnet", "File", "USB", "Aux", "Trigger", "Queue", "LCD", "SBC", "Daemon", "Aux2", "Autopause"]
 
 quiet = False
+slow_kbps = 0.0  # --slow: download speed (KB/s), 0 = full speed
 
 
 def log(*a):
@@ -1791,6 +1793,18 @@ def make_handler(m, password):
             self.end_headers()
             self.wfile.write(data)
 
+        def send_slowly(self, data, kbps):
+            # a slow network (Duet 2 WiFi): the file in 4 KB pieces at kbps kilobytes per second
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            piece = 4096
+            for i in range(0, len(data), piece):
+                self.wfile.write(data[i:i + piece])
+                time.sleep(piece / (kbps * 1024.0))
+
         def js(self, obj, code=200):
             self.send(json.dumps(obj, separators=(",", ":")), code=code)
 
@@ -1837,6 +1851,8 @@ def make_handler(m, password):
                     p = m.path(q.get("name", ""), "gcodes")
                     if not p.is_file():
                         return self.send(b"", "text/plain", 404)
+                    if slow_kbps > 0:
+                        return self.send_slowly(p.read_bytes(), slow_kbps)
                     return self.send(p.read_bytes(), "application/octet-stream")
                 if route == "/rr_delete":
                     p = m.path(q.get("name", ""), "gcodes")
@@ -2060,7 +2076,7 @@ def make_sd(sd, reset):
 
 
 def main():
-    global quiet
+    global quiet, slow_kbps
     ap = argparse.ArgumentParser(description="A pretend CNC Duet for the DuetScreen simulator.")
     ap.add_argument("--port", type=int, default=8080, help="TCP port (default 8080)")
     ap.add_argument("--bind", default="127.0.0.1", help="address to listen on (0.0.0.0 = whole network)")
@@ -2072,8 +2088,11 @@ def main():
     ap.add_argument("--card1", action="store_true", help="also mount the second card 1:/")
     ap.add_argument("--password", default="", help="require this password (rr_connect)")
     ap.add_argument("--quiet", action="store_true", help="do not print the G-code it receives")
+    ap.add_argument("--slow", type=float, default=0, metavar="KB",
+                    help="file downloads at KB kilobytes per second (e.g. 300 for a Duet 2 WiFi; default: full speed)")
     args = ap.parse_args()
     quiet = args.quiet
+    slow_kbps = args.slow
     args.sd = str(make_sd(args.sd, args.reset_sd))
     m = Machine(args)
     server = ThreadingHTTPServer((args.bind, args.port), make_handler(m, args.password))

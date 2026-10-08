@@ -6,7 +6,9 @@
 
 #include "CncJobListPage.h"
 #include "CncKeyboard.h"
+#include "CncPanel.h"
 #include "CncPopup.h"
+#include "CncPreviewSource.h"
 #include "CncState.h"
 #include "CncTheme.h"
 #include "Debug.h"
@@ -153,6 +155,12 @@ namespace UI::Cnc
 		return m_selected.empty() ? std::string() : fullDir() + m_selected;
 	}
 
+	PreviewSource::Stamp JobListPage::stampOf(const std::string& path) const
+	{
+		const auto it = m_stamps.find(path);
+		return (it != m_stamps.end()) ? it->second : PreviewSource::Stamp();
+	}
+
 	std::string JobListPage::fullDir() const
 	{
 		return (m_card == 0) ? fmt::format("{}{}", OM::Directories::GetGcodesDirectory(), m_path)
@@ -273,25 +281,37 @@ namespace UI::Cnc
 					return; // the page is gone
 				}
 				std::vector<Entry> entries;
+				std::map<std::string, PreviewSource::Stamp> stamps;
 				for (const auto& item : items)
 				{
 					if (item)
 					{
-						entries.push_back(
-							{item->GetName(), item->GetType() == OM::FileSystem::FileSystemItemType::folder});
+						const bool folder = item->GetType() == OM::FileSystem::FileSystemItemType::folder;
+						entries.push_back({item->GetName(), folder});
+						if (!folder)
+						{
+							stamps[item->GetName()] = {item->GetSize(), item->GetDate()};
+						}
 					}
 				}
 				UI_LOCK();
-				listingArrived(dir, std::move(entries));
+				listingArrived(dir, std::move(entries), std::move(stamps));
 			},
 			true);
 	}
 
-	void JobListPage::listingArrived(const std::string& dir, std::vector<Entry> entries)
+	void JobListPage::listingArrived(const std::string& dir,
+									 std::vector<Entry> entries,
+									 std::map<std::string, PreviewSource::Stamp> stamps)
 	{
 		if (dir != fullDir())
 		{
 			return; // a folder left meanwhile
+		}
+		m_stamps.clear();
+		for (auto& [name, stamp] : stamps)
+		{
+			m_stamps[dir + name] = std::move(stamp);
 		}
 		// Folders first, then files, by name (as the PanelDue listing)
 		std::stable_sort(entries.begin(),
@@ -591,7 +611,7 @@ namespace UI::Cnc
 		}
 	} // namespace
 
-	void AskRunJob(const std::string& path)
+	void AskRunJob(const std::string& path, const RunCheck& check)
 	{
 		if (path.empty())
 		{
@@ -603,28 +623,81 @@ namespace UI::Cnc
 			Popup::Refuse(why);
 			return;
 		}
-		Popup::Confirm("ALERT !",
-					   {"Do you want to RUN", "this job?", baseName(path)},
-					   [path]
-					   {
-						   const std::string again = runRefusal(); // the machine may have changed meanwhile
-						   if (!again.empty())
-						   {
-							   Popup::Refuse(again);
-							   return;
-						   }
-						   State::Send(fmt::format("M32 \"{:s}\"\n", path)); // the job name comes from the machine
-					   });
+		auto start = [path]
+		{
+			const std::string again = runRefusal(); // the machine may have changed meanwhile
+			if (!again.empty())
+			{
+				Popup::Refuse(again);
+				return;
+			}
+			State::Send(fmt::format("M32 \"{:s}\"\n", State::Quoted(path))); // the job name comes from the machine
+		};
+		if (check.warnedOps.empty())
+		{
+			Popup::Confirm("ALERT !", {"Do you want to RUN", "this job?", baseName(path)}, start);
+			return;
+		}
+		std::string ops;
+		for (int op : check.warnedOps)
+		{
+			ops += fmt::format("{:s}{:d}", ops.empty() ? "" : ", ", op);
+		}
+		const std::string warned =
+			(check.warnedOps.size() == 1) ? "Warning: operation " + ops : "Warnings: operations " + ops;
+		std::vector<std::string> serious;
+		for (size_t i = 0; i < check.serious.size() && i < MaxSeriousLines; ++i)
+		{
+			serious.push_back(check.serious[i]);
+		}
+		if (check.serious.size() > MaxSeriousLines)
+		{
+			serious.push_back(fmt::format("and {:d} more", check.serious.size() - MaxSeriousLines));
+		}
+		Popup::ConfirmWarning("WARNING",
+							  {"Do you want to RUN", "this job?", baseName(path), "", warned},
+							  [serious, start]
+							  {
+								  if (serious.empty())
+								  {
+									  start();
+									  return;
+								  }
+								  std::vector<std::string> lines = serious;
+								  lines.emplace_back();
+								  lines.emplace_back("RUN anyway?");
+								  Popup::ConfirmWarning("WARNING", lines, start);
+							  });
 	}
 
 	// ---- The JOB popup: PREVIEW or delete ----
 
+	// Why PREVIEW cannot open this file now (SETTINGS > PREVIEW IN JOB while a job runs), "" when it can
+	std::string JobListPage::previewRefusal(const std::string& path) const
+	{
+		if (!State::JobActive() || path == m_jobFile)
+		{
+			return "";
+		}
+		switch (Panel::PreviewDuringJob())
+		{
+		case Panel::PreviewInJob::RunningJob:
+			return "While a job runs, PREVIEW shows only that job.\n(SETTINGS > PREVIEW IN JOB)";
+		case Panel::PreviewInJob::Off:
+			return "PREVIEW is off while a job runs.\n(SETTINGS > PREVIEW IN JOB)";
+		default:
+			return "";
+		}
+	}
+
 	void JobListPage::askAction(const std::string& name)
 	{
 		std::weak_ptr<bool> alive = m_alive;
+		const std::string path = fullDir() + name;
+		const bool previewOk = previewRefusal(path).empty();
 		Popup::ConfirmWithTrash(
 			"JOB",
-			{name, "", "Check: open in PREVIEW", "Trash: delete the file"},
+			{name, "", previewOk ? "Check: open in PREVIEW" : "PREVIEW: not during this job", "Trash: delete the file"},
 			[this, alive, name]
 			{
 				if (!alive.expired())
@@ -632,13 +705,24 @@ namespace UI::Cnc
 					askDelete(name);
 				}
 			},
-			[this, alive]
+			[this, alive, path]
 			{
-				if (!alive.expired() && m_previewRequest)
+				if (alive.expired())
+				{
+					return;
+				}
+				const std::string why = previewRefusal(path); // the job may have ended meanwhile
+				if (!why.empty())
+				{
+					Popup::Refuse(why);
+					return;
+				}
+				if (m_previewRequest)
 				{
 					m_previewRequest();
 				}
-			});
+			},
+			previewOk);
 	}
 
 	void JobListPage::askDelete(const std::string& name)
@@ -672,7 +756,8 @@ namespace UI::Cnc
 						   {
 							   return;
 						   }
-						   State::Send(fmt::format("M30 \"{:s}\"\n", path));
+						   State::Send(fmt::format("M30 \"{:s}\"\n", State::Quoted(path)));
+						   PreviewSource::Forget(path); // not kept for PREVIEW any more
 						   // Gone from the list at once; the machine's own listing follows
 						   m_entries.erase(std::remove_if(m_entries.begin(),
 														  m_entries.end(),
