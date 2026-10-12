@@ -119,7 +119,10 @@
             "inherits": [
                 "T113-Base",
                 "Release"
-            ]
+            ],
+            "cacheVariables": {
+                "DUETSCREEN_CNC_UI": "ON"
+            }
         },
         {
             "name": "T113-Release_with_profiling",
