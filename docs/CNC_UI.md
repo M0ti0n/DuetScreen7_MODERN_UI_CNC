@@ -205,7 +205,8 @@ The machine only serves the file (as DWC's own downloads and G-code viewer do); 
 drawing run on the screen. On a Duet 2 WiFi a download during a job may be slower; OFF avoids
 downloads during jobs altogether.
 
-**File download.** RRF cannot send a file's contents over UART or USB, so PREVIEW downloads the job
+**File download.** RRF can hand out a file only in small pieces (`M36.2`, about 1 KB each) over UART or
+USB, which would compete with the live commands and the running job. So PREVIEW downloads the job
 file over the network, whatever the machine connection is: commands stay on USB (Duet3D's
 recommendation), the file comes from the address the machine reports (`network.interfaces[].actualIP`)
 with `rr_connect` / `rr_download` / `rr_disconnect`; with a NETWORK connection, from that address. The

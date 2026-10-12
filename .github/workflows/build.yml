@@ -65,7 +65,7 @@ jobs:
           path: buildroot-duetscreen
           submodules: recursive
           fetch-depth: 0
-          token: ${{ secrets.PAT }}
+          token: ${{ secrets.PAT || github.token }}
 
       - name: Determine latest Buildroot tag on master
         id: buildroot_tag
