@@ -505,6 +505,34 @@ Releases: <https://github.com/M0ti0n/DuetScreen7_MODERN_UI_CNC/releases>
 
 To install, follow the DuetScreen instructions: download `sdcard.img` from the release page, flash a microSD card (balenaEtcher, Rufus, or `dd` on Linux) and power the screen on from it.
 
+
+
+ Here is the order:
+
+1. Download the image. Open Releases and find v0.1.0-cnc-rc1, which is marked pre-release. Download sdcard.img. Note its size, because the SD card must be at least that large. You can ignore the other two files for now.
+
+2. Write it to an SD card.
+
+Use balenaEtcher or Raspberry Pi Imager. In Imager choose Choose OS → Use custom and pick the .img. If Imager refuses or complains about the file, use Etcher instead.
+Use a card you don’t need. Writing erases everything on it.
+When it finishes, Windows may say the card is unreadable or offer to format it. Click Cancel or ignore it. That is normal, because the card has Linux partitions.
+
+3. Boot the display.
+
+Power the display off and put the card in its SD slot.
+Power it on and wait. The first boot takes longer than usual.
+Duet’s docs say the first-boot options on the card come from BOOT.md. You don’t need to set anything for a first test.
+
+4. Check it. You should see the CNC interface with the bottom navigation, and not the stock Duet screen. Connect it to your machine (SETTINGS → connection, USB or network) and test the tabs.
+
+If something goes wrong:
+
+Screen stays black or shows the stock UI: tell me exactly what you see, and whether the card was inserted at power-up. I haven’t verified whether the display always prefers the card over its internal storage.
+Anything odd on screen: take a photo and describe the steps.
+Going back to stock: remove the card and reboot. That does not touch the internal NAND.
+
+I haven’t seen this build run on the real display, so the first boot is the real test. Tell me what happens.
+
 ---
 
 # Build and test
