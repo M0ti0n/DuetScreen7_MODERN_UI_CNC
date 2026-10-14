@@ -4,7 +4,7 @@
 ## THIS IS AT TEST PHASE
 ## CNC machines can cause serious injury and damage. Keep the STOP button of the machine (and a hardware emergency stop) within reach at all times. Never leave a running machine unattended.
 ## USING AT YOUR OWN RISK
-## THIS IS 100% VIBE CODED USING CLOUDE. I AIM TO MAKE IT AS BEST TO MY UNDERSTANDING OF CNC AS POSSIBLE (IM ME) WITH AS MUCH SAFETY MECHANICS BUILD IN, BUT IM NO SOFTWARE DEVELOPED SO FOR ACTUAL CODING CLOuDE WES USED 100%
+## THIS IS 100% VIBE CODED USING CLOUDE. I AIM TO MAKE IT AS BEST TO MY UNDERSTANDING OF CNC AS POSSIBLE (IM ME) WITH AS MUCH SAFETY MECHANICS BUILD IN, BUT IM NO SOFTWARE DEVELOPED SO FOR ACTUAL CODING CLOUDE WAS USED 100%
 
 **MODERN UI CNC for the Duet3D DuetScreen 7** is a portrait touchscreen interface for CNC mills and routers running
 [RepRapFirmware](https://github.com/Duet3D/RepRapFirmware). It is built with LVGL and runs on the
