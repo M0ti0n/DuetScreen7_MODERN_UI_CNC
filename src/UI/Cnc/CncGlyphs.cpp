@@ -286,7 +286,7 @@ namespace UI::Cnc
 		}
 	} // namespace
 
-	void DrawOriginGlyph(Pen& pen, Origin kind, lv_color_t glyph, lv_color_t bg)
+	void DrawOriginGlyph(Pen& pen, Origin kind, lv_color_t glyph, lv_color_t bg, bool inside)
 	{
 		constexpr int off = 9, ln = 13, sw = 4, dot = 4;
 		pen.setColour(glyph);
@@ -325,11 +325,12 @@ namespace UI::Cnc
 			return;
 
 		case Origin::TC:
-		case Origin::BC: // top / bottom edge: bar, dot in its middle
+		case Origin::BC: // top / bottom edge: bar, the probe dot in the middle, touching it from the outside or inside
 		{
 			const int yy = (kind == Origin::TC) ? -off : off;
+			const int outward = (kind == Origin::TC) ? -1 : 1;
 			thickLine(pen, -ln, yy, ln, yy, sw);
-			pen.fillCircle(0, yy, dot);
+			pen.fillCircle(0, yy + (inside ? -outward : outward) * (sw / 2 + dot), dot);
 			return;
 		}
 
@@ -337,15 +338,16 @@ namespace UI::Cnc
 		case Origin::MR: // left / right edge
 		{
 			const int xx = (kind == Origin::ML) ? -off : off;
+			const int outward = (kind == Origin::ML) ? -1 : 1;
 			thickLine(pen, xx, -ln, xx, ln, sw);
-			pen.fillCircle(xx, 0, dot);
+			pen.fillCircle(xx + (inside ? -outward : outward) * (sw / 2 + dot), 0, dot);
 			return;
 		}
 
 		case Origin::TL:
 		case Origin::TR:
 		case Origin::BL:
-		case Origin::BR: // corner: L shape, dot on the vertex
+		case Origin::BR: // corner: L shape, the probe dot outside the vertex or inside, touching both walls
 		{
 			const bool left = (kind == Origin::TL || kind == Origin::BL);
 			const bool topSide = (kind == Origin::TL || kind == Origin::TR);
@@ -355,7 +357,10 @@ namespace UI::Cnc
 			const int ey = yy + (topSide ? (ln + 4) : -(ln + 4));
 			thickLine(pen, xx, ey, xx, yy, sw);
 			thickLine(pen, xx, yy, ex, yy, sw);
-			pen.fillCircle(xx, yy, dot + 1);
+			const int ox = left ? -1 : 1;				// outward, away from the middle of the button
+			const int oy = topSide ? -1 : 1;
+			const int d = inside ? -(sw / 2 + dot + 1) : (dot + 2);	// per axis: tangent to both walls / to the vertex
+			pen.fillCircle(xx + ox * d, yy + oy * d, dot + 1);
 			return;
 		}
 

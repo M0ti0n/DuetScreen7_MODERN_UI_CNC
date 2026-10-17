@@ -201,8 +201,7 @@ TEST_F(TestCncWcsOffsets, ClearAndApplyOffsetStep)
 	Popup::PressOk();
 	ASSERT_EQ(sent.size(), 2u);
 	EXPECT_EQ(sent[0],
-			  "G10 L2 P{move.workplaceNumber + 1} "
-			  "Z{move.axes[2].workplaceOffsets[move.workplaceNumber] + move.axes[2].babystep}\n");
+			  "G10 L2 P1 Z{move.axes[2].workplaceOffsets[0] + move.axes[2].babystep}\n");
 	EXPECT_EQ(sent[1], "M290 R0 Z0\n");
 	EXPECT_TRUE(State::OffsetsUnsaved());
 }

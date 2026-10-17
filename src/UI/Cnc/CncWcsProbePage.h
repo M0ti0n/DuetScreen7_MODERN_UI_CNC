@@ -8,18 +8,24 @@
  *   [ML ][MC ][MR ]      |  [SEARCH    ][Z DEPTH   ]
  *   [BL ][BC ][BR ]      |  [STOCK     ][SAVE TO  v]
  *   [BORE][BOSS][Z TOP]  |
- *   [PROBE OPEN] [          RUN PROBE             ]
+ *   [OUTSIDE|INSIDE]     |  [o  PROBE]  (o = probe signal: ring open, disc closed; green / red)
  *
  * Same behaviour as on PanelDue:
  *  - One origin is picked at a time: corners, edges and centre fill with the accent colour, BORE,
  *    BOSS and Z TOP get an accent outline.
  *  - The mode (AUTO / SEMI-AUTO / MANUAL) comes from SETTINGS and is shown as a label; each mode has
  *    its parameter tiles (numpad; STOCK: X, then Y; STORE TO: G54..G59).
- *  - The PROBE tile shows probe 0: green outline OPEN, red outline CLOSED (triggered).
- *  - RUN PROBE / START calls the mode's macro:
- *      AUTO    M98 P"0:/sys/probe/probe_auto.g"   O"TL" D<tip> C<clear> S<search> Z<depth> L<stock X> B<stock Y> W<1..6>
- *      SEMI    M98 P"0:/sys/probe/probe_semi.g"   O"TL" D<tip> C<clear> S<search> W<1..6>
- *      MANUAL  M98 P"0:/sys/probe/probe_manual.g" O"TL" D<tool diameter> W<1..6>
+ *  - The PROBE button shows probe 0: green outline, text and a ring when open; red, with a disc, when
+ *    closed (triggered) - a tap is then refused. No dot when the machine does not report the probe, and
+ *    on START (MANUAL: the cutter is the probe).
+ *  - OUTSIDE | INSIDE (under the origins): corners, edges and centre are probed from outside the part
+ *    (default) or from inside a pocket; the origin icons show the probe dot on that side. BORE is always
+ *    inside and BOSS outside, Z TOP has no side: the switch is greyed (and shows BORE: INSIDE, BOSS:
+ *    OUTSIDE). INSIDE adds " I1" to the macro call (not for BORE / BOSS / Z TOP).
+ *  - PROBE / START calls the mode's macro:
+ *      AUTO    M98 P"0:/sys/probe/probe_auto.g"   O"TL" D<tip> C<clear> S<search> Z<depth> L<stock X> B<stock Y> W<1..6> [I1]
+ *      SEMI    M98 P"0:/sys/probe/probe_semi.g"   O"TL" D<tip> C<clear> S<search> W<1..6> [I1]
+ *      MANUAL  M98 P"0:/sys/probe/probe_manual.g" O"TL" D<tool diameter> W<1..6> [I1]
  *    Refused during a job, when the machine is not idle, not homed, or (not MANUAL) the probe is
  *    already closed.
  *  - AUTO opens the progress popup under the DRO, with a wide emergency STOP: the macro's M291 S1
@@ -76,6 +82,7 @@ namespace UI::Cnc
 		// Touches (also used by the tests)
 		void originPressed(size_t origin);
 		void paramPressed(Param p);
+		void sidePressed();							// OUTSIDE | INSIDE (not for BORE, BOSS, Z TOP)
 		void runPressed();
 
 		// The popups (Messages calls these; the tests too)
@@ -95,6 +102,8 @@ namespace UI::Cnc
 
 		// State, for tests
 		size_t origin() const { return m_origin; }
+		bool inside() const;						// the side now in force: BORE inside, BOSS outside, else the choice
+		bool sideLocked() const;					// BORE, BOSS, Z TOP: the switch is greyed
 		const std::string& autoHead() const { return m_autoHead; }
 		const std::string& autoStatus() const { return m_autoStatus; }
 		std::string autoRowValue(size_t r) const { return (r < 2) ? m_autoRowValue[r] : std::string(); }
@@ -108,6 +117,7 @@ namespace UI::Cnc
 		void showModeLayout();
 		void updateTileText(Param p);
 		void updateProbeTile();
+		void updateSide();
 		float* valueOf(Param p);
 		void openNumpad(const char* tag, float value, float min, float max, std::function<void(float)> onOk);
 		void statusChanged();
@@ -131,8 +141,9 @@ namespace UI::Cnc
 		};
 		ModeTile m_modeTiles[3][MaxModeTiles];		// per mode: AUTO, SEMI, MANUAL
 		size_t m_modeTileCount[3] = {0, 0, 0};
-		StatusTile m_probeTile;
-		TextButton m_run, m_start;
+		SegmentToggle m_side;						// OUTSIDE | INSIDE, under the origins
+		ProbeButton m_run, m_start;					// PROBE (probe signal dot), START (MANUAL)
+		bool m_userInside = false;					// the operator's side (default OUTSIDE)
 		std::string m_tileText[NumParams];
 
 		// Values

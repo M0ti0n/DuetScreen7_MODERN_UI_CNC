@@ -25,8 +25,8 @@ namespace UI::Cnc
 		inline lv_color_t DarkText() { return lv_color_hex(0x12161C); }
 		inline lv_color_t ButtonText() { return lv_color_hex(0x242424); }
 		inline lv_color_t NotHomed() { return lv_color_hex(0x804000); }
-		inline lv_color_t StopRed() { return lv_color_hex(0xC93218); }
-		inline lv_color_t StopRedPressed() { return lv_color_hex(0xA02723); }
+		inline lv_color_t StopRed() { return lv_color_hex(0xE60000); }
+		inline lv_color_t StopRedPressed() { return lv_color_hex(0xB80000); }
 		inline lv_color_t StopGlyph() { return lv_color_hex(0xF5F5F5); }
 		inline lv_color_t Green() { return lv_color_hex(0x56B834); }
 		inline lv_color_t Cyan() { return lv_color_hex(0x5FC3DC); }

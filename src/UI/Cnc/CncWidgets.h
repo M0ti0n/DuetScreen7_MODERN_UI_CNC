@@ -70,8 +70,10 @@ namespace UI::Cnc
 	  public:
 		using Handler = std::function<void()>;
 
-		void create(lv_obj_t* parent, int32_t x, int32_t y, int32_t w, int32_t h, const char* top, const char* bottom);
-		void setSecondActive(bool b);				// false: top (RAPID), true: bottom (SLOW)
+		// horizontal: the two halves side by side (OUTSIDE | INSIDE), 'top' is the left one
+		void create(lv_obj_t* parent, int32_t x, int32_t y, int32_t w, int32_t h, const char* top, const char* bottom,
+					bool horizontal = false);
+		void setSecondActive(bool b);				// false: top / left (RAPID), true: bottom / right (SLOW)
 		bool secondActive() const { return m_second; }
 		void setLocked(bool locked);
 		void onPress(Handler h) { m_onPress = std::move(h); }
@@ -83,8 +85,8 @@ namespace UI::Cnc
 		lv_obj_t* m_fill = nullptr;
 		lv_obj_t* m_top = nullptr;
 		lv_obj_t* m_bottom = nullptr;
-		int32_t m_height = 0;						// the object's height is not laid out yet when applyLook runs
-		bool m_second = false, m_locked = false;
+		int32_t m_height = 0, m_width = 0;			// the object's size is not laid out yet when applyLook runs
+		bool m_second = false, m_locked = false, m_horizontal = false;
 		Handler m_onPress;
 	};
 
@@ -121,6 +123,8 @@ namespace UI::Cnc
 					bool outlineStyle);
 		void setSelected(bool selected);
 		bool selected() const { return m_selected; }
+		void setInside(bool inside);				// corners and edges: the probe dot inside the pocket
+		bool inside() const { return m_inside; }
 		void onPress(Handler h) { m_onPress = std::move(h); }
 
 	  private:
@@ -129,7 +133,36 @@ namespace UI::Cnc
 		lv_obj_t* m_obj = nullptr;
 		Origin m_kind = Origin::None;
 		const char* m_label = nullptr;
-		bool m_outlineStyle = false, m_selected = false;
+		bool m_outlineStyle = false, m_selected = false, m_inside = false;
+		Handler m_onPress;
+	};
+
+	// WCS > PROBE: the PROBE / START button. Outline and text in one colour: green = ready, red = the
+	// probe is triggered. With a probe signal a dot stands before the text: a ring = open, a disc =
+	// closed (so the state does not rely on the colour alone). Acts on touch down.
+	class ProbeButton
+	{
+	  public:
+		using Handler = std::function<void()>;
+		enum class Signal : uint8_t
+		{
+			None,		// no dot (START, or the machine does not report the probe)
+			Open,
+			Closed
+		};
+
+		void create(lv_obj_t* parent, int32_t x, int32_t y, int32_t w, int32_t h, const char* text);
+		void setSignal(Signal signal);
+		Signal signal() const { return m_signal; }
+		void show(bool visible);
+		void onPress(Handler h) { m_onPress = std::move(h); }
+
+	  private:
+		static void draw(lv_event_t* e);
+
+		lv_obj_t* m_obj = nullptr;
+		std::string m_text;
+		Signal m_signal = Signal::None;
 		Handler m_onPress;
 	};
 
@@ -154,22 +187,6 @@ namespace UI::Cnc
 		std::string m_label, m_value;
 		bool m_stacked = false, m_dropdown = false;
 		Handler m_onPress;
-	};
-
-	// Status tile (PanelDue CncStatusTile): caption and a value, 3 px outline in the state colour
-	class StatusTile
-	{
-	  public:
-		void create(lv_obj_t* parent, int32_t x, int32_t y, int32_t w, int32_t h, const char* caption);
-		void setState(const std::string& value, lv_color_t outline);
-		const std::string& value() const { return m_value; }
-		void show(bool visible);
-
-	  private:
-		static void draw(lv_event_t* e);
-
-		lv_obj_t* m_obj = nullptr;
-		std::string m_caption, m_value;
 	};
 
 	// File list row (PanelDue CncFileRow): name on the left, a muted tag on the right (FOLDER, UP),

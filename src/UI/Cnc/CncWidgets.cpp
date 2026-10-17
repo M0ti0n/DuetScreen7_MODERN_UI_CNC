@@ -227,11 +227,13 @@ namespace UI::Cnc
 
 	// ---- SegmentToggle -------------------------------------------------------------------------
 
-	void SegmentToggle::create(
-		lv_obj_t* parent, int32_t x, int32_t y, int32_t w, int32_t h, const char* top, const char* bottom)
+	void SegmentToggle::create(lv_obj_t* parent, int32_t x, int32_t y, int32_t w, int32_t h, const char* top,
+							   const char* bottom, bool horizontal)
 	{
 		m_obj = CreateBare(parent, x, y, w, h);
 		m_height = h;
+		m_width = w;
+		m_horizontal = horizontal;
 		StyleCard(m_obj, Colour::Tile(), Colour::Border());
 		lv_obj_set_style_bg_color(m_obj, Colour::Pressed(), LV_STATE_PRESSED);
 		lv_obj_add_flag(m_obj, LV_OBJ_FLAG_CLICKABLE);
@@ -239,22 +241,33 @@ namespace UI::Cnc
 		// Active half: inset 4 PanelDue px from the outer edge (the border is 2 of them)
 		const int32_t inset = S(4) - CardBorder;
 		const int32_t innerW = w - 2 * CardBorder;
-		const int32_t half = (h - 2 * CardBorder) / 2;
-		m_fill = CreateBare(m_obj, inset, inset, innerW - 2 * inset, half - inset);
+		const int32_t innerH = h - 2 * CardBorder;
+		if (horizontal)
+		{
+			const int32_t half = innerW / 2;
+			m_fill = CreateBare(m_obj, inset, inset, half - inset, innerH - 2 * inset);
+			m_top = CreateLabel(m_obj, 0, 0, half, innerH, Font::Small(), Colour::Text(), LV_TEXT_ALIGN_CENTER, top);
+			m_bottom = CreateLabel(
+				m_obj, half, 0, innerW - half, innerH, Font::Small(), Colour::Text(), LV_TEXT_ALIGN_CENTER, bottom);
+		}
+		else
+		{
+			const int32_t half = innerH / 2;
+			m_fill = CreateBare(m_obj, inset, inset, innerW - 2 * inset, half - inset);
+			m_top = CreateLabel(m_obj, 0, 0, innerW, half, Font::Small(), Colour::Text(), LV_TEXT_ALIGN_CENTER, top);
+			m_bottom = CreateLabel(m_obj,
+								   0,
+								   half,
+								   innerW,
+								   innerH - half,
+								   Font::Small(),
+								   Colour::Text(),
+								   LV_TEXT_ALIGN_CENTER,
+								   bottom);
+		}
 		lv_obj_set_style_bg_opa(m_fill, LV_OPA_COVER, 0);
 		lv_obj_set_style_radius(m_fill, CardRadius, 0);
 		lv_obj_remove_flag(m_fill, LV_OBJ_FLAG_CLICKABLE);
-
-		m_top = CreateLabel(m_obj, 0, 0, innerW, half, Font::Small(), Colour::Text(), LV_TEXT_ALIGN_CENTER, top);
-		m_bottom = CreateLabel(m_obj,
-							   0,
-							   half,
-							   innerW,
-							   h - 2 * CardBorder - half,
-							   Font::Small(),
-							   Colour::Text(),
-							   LV_TEXT_ALIGN_CENTER,
-							   bottom);
 
 		lv_obj_add_event_cb(
 			m_obj,
@@ -286,10 +299,19 @@ namespace UI::Cnc
 	void SegmentToggle::applyLook()
 	{
 		const int32_t inset = S(4) - CardBorder;
-		const int32_t half = (m_height - 2 * CardBorder) / 2;
-		// PanelDue: top half from the inset to the middle, bottom half from the middle to the inset
-		lv_obj_set_y(m_fill, m_second ? half : inset);
-		lv_obj_set_height(m_fill, half - inset);
+		if (m_horizontal)
+		{
+			const int32_t half = (m_width - 2 * CardBorder) / 2;
+			lv_obj_set_x(m_fill, m_second ? half : inset);
+			lv_obj_set_width(m_fill, half - inset);
+		}
+		else
+		{
+			const int32_t half = (m_height - 2 * CardBorder) / 2;
+			// PanelDue: top half from the inset to the middle, bottom half from the middle to the inset
+			lv_obj_set_y(m_fill, m_second ? half : inset);
+			lv_obj_set_height(m_fill, half - inset);
+		}
 		lv_obj_set_style_bg_color(m_fill, m_locked ? Colour::Border() : Colour::Accent(), 0);
 		const lv_color_t idle = m_locked ? Colour::Border() : Colour::Text();
 		const lv_color_t active = m_locked ? Colour::Muted() : Colour::DarkText();
@@ -416,6 +438,15 @@ namespace UI::Cnc
 		lv_obj_invalidate(m_obj);
 	}
 
+	void OriginButton::setInside(bool inside)
+	{
+		if (inside != m_inside)
+		{
+			m_inside = inside;
+			lv_obj_invalidate(m_obj);
+		}
+	}
+
 	void OriginButton::draw(lv_event_t* e)
 	{
 		auto* self = static_cast<OriginButton*>(lv_event_get_user_data(e));
@@ -433,15 +464,82 @@ namespace UI::Cnc
 		if (self->m_label != nullptr)
 		{
 			Pen pen(layer, cx, a.y1 + px(28));
-			DrawOriginGlyph(pen, self->m_kind, glyph, bg);
+			DrawOriginGlyph(pen, self->m_kind, glyph, bg, self->m_inside);
 			const lv_area_t t = {a.x1 + px(2), a.y2 - px(26), a.x2 - px(2), a.y2 - px(26) + px(22)};
 			DrawText(layer, t, self->m_label, Font::Small(), glyph, LV_TEXT_ALIGN_CENTER);
 		}
 		else
 		{
 			Pen pen(layer, cx, a.y1 + lv_area_get_height(&a) / 2);
-			DrawOriginGlyph(pen, self->m_kind, glyph, bg);
+			DrawOriginGlyph(pen, self->m_kind, glyph, bg, self->m_inside);
 		}
+	}
+
+	// ---- ProbeButton ---------------------------------------------------------------------------
+
+	void ProbeButton::create(lv_obj_t* parent, int32_t x, int32_t y, int32_t w, int32_t h, const char* text)
+	{
+		m_text = text;
+		m_obj = CreateBare(parent, x, y, w, h);
+		StyleCard(m_obj, Colour::Tile(), Colour::Green());
+		lv_obj_set_style_border_width(m_obj, px(3), 0); // 3 px outline in the state colour
+		lv_obj_set_style_bg_color(m_obj, Colour::Pressed(), LV_STATE_PRESSED);
+		lv_obj_add_flag(m_obj, LV_OBJ_FLAG_CLICKABLE);
+		lv_obj_add_event_cb(m_obj, draw, LV_EVENT_DRAW_MAIN_END, this);
+		lv_obj_add_event_cb(
+			m_obj,
+			[](lv_event_t* e)
+			{
+				auto* self = static_cast<ProbeButton*>(lv_event_get_user_data(e));
+				if (self->m_onPress)
+				{
+					self->m_onPress();
+				}
+			},
+			LV_EVENT_PRESSED,
+			this);
+		setSignal(Signal::None);
+	}
+
+	void ProbeButton::setSignal(Signal signal)
+	{
+		m_signal = signal;
+		lv_obj_set_style_border_color(m_obj, signal == Signal::Closed ? Colour::StopRed() : Colour::Green(), 0);
+		lv_obj_invalidate(m_obj);
+	}
+
+	void ProbeButton::show(bool visible)
+	{
+		showObj(m_obj, visible);
+	}
+
+	void ProbeButton::draw(lv_event_t* e)
+	{
+		auto* self = static_cast<ProbeButton*>(lv_event_get_user_data(e));
+		lv_layer_t* layer = lv_event_get_layer(e);
+		lv_area_t a;
+		lv_obj_get_coords(self->m_obj, &a);
+		const lv_color_t colour = (self->m_signal == Signal::Closed) ? Colour::StopRed() : Colour::Green();
+		const lv_color_t bg = lv_obj_has_state(self->m_obj, LV_STATE_PRESSED) ? Colour::Pressed() : Colour::Tile();
+		const lv_font_t* font = Font::Large();
+		lv_point_t size;
+		lv_text_get_size(&size, self->m_text.c_str(), font, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+		const bool dot = (self->m_signal != Signal::None);
+		const int32_t dotW = dot ? px(22) + px(14) : 0;		// the dot (diameter 22) and the gap to the text
+		const int32_t x0 = a.x1 + (lv_area_get_width(&a) - (dotW + size.x)) / 2;
+		if (dot)
+		{
+			Pen pen(layer, x0 + px(11), a.y1 + lv_area_get_height(&a) / 2);
+			pen.setColour(colour);
+			pen.fillCircle(0, 0, 9);
+			if (self->m_signal == Signal::Open) // a ring: open
+			{
+				pen.setColour(bg);
+				pen.fillCircle(0, 0, 5);
+			}
+		}
+		const lv_area_t t = {x0 + dotW, a.y1, x0 + dotW + size.x + px(2), a.y2};
+		DrawText(layer, t, self->m_text.c_str(), font, colour, LV_TEXT_ALIGN_LEFT);
 	}
 
 	// ---- ValueTile -----------------------------------------------------------------------------
@@ -518,42 +616,6 @@ namespace UI::Cnc
 				pen.fillRect(-5 + r, -3 + r, 5 - r, -3 + r);
 			}
 		}
-	}
-
-	// ---- StatusTile ----------------------------------------------------------------------------
-
-	void StatusTile::create(lv_obj_t* parent, int32_t x, int32_t y, int32_t w, int32_t h, const char* caption)
-	{
-		m_caption = caption;
-		m_obj = CreateBare(parent, x, y, w, h);
-		StyleCard(m_obj, Colour::Tile(), Colour::Border());
-		lv_obj_set_style_border_width(m_obj, px(3), 0); // 3 px outline in the state colour
-		lv_obj_add_event_cb(m_obj, draw, LV_EVENT_DRAW_MAIN_END, this);
-	}
-
-	void StatusTile::setState(const std::string& value, lv_color_t outline)
-	{
-		m_value = value;
-		lv_obj_set_style_border_color(m_obj, outline, 0);
-		lv_obj_invalidate(m_obj);
-	}
-
-	void StatusTile::show(bool visible)
-	{
-		showObj(m_obj, visible);
-	}
-
-	void StatusTile::draw(lv_event_t* e)
-	{
-		auto* self = static_cast<StatusTile*>(lv_event_get_user_data(e));
-		lv_layer_t* layer = lv_event_get_layer(e);
-		lv_area_t a;
-		lv_obj_get_coords(self->m_obj, &a);
-		const int32_t h = lv_area_get_height(&a);
-		const lv_area_t c = {a.x1 + px(4), a.y1 + px(4), a.x2 - px(4), a.y1 + px(4) + px(22) - 1};
-		const lv_area_t v = {a.x1 + px(4), a.y1 + h / 2 - px(2), a.x2 - px(4), a.y1 + h / 2 - px(2) + h / 2 - 1};
-		DrawText(layer, c, self->m_caption.c_str(), Font::Small(), Colour::Muted(), LV_TEXT_ALIGN_CENTER);
-		DrawText(layer, v, self->m_value.c_str(), Font::Small(), Colour::Text(), LV_TEXT_ALIGN_CENTER);
 	}
 
 	// ---- TextTile ------------------------------------------------------------------------------

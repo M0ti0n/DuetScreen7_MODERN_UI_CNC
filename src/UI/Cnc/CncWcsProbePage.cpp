@@ -77,6 +77,7 @@ namespace UI::Cnc
 		};
 		GlyphSpec s_titleGlyph, s_autoSideGlyph, s_jogSideGlyph;
 		Origin s_titleOrigin = Origin::TL;
+		bool s_runInside = false; // the side of the last RUN: the probe dot in the popups' glyphs
 
 		void drawGlyph(lv_event_t* e)
 		{
@@ -88,7 +89,8 @@ namespace UI::Cnc
 			DrawOriginGlyph(pen,
 							*spec->kind,
 							spec->accent ? Colour::Accent() : Colour::Text(),
-							spec->accent ? Colour::PageBg() : Colour::Tile());
+							spec->accent ? Colour::PageBg() : Colour::Tile(),
+							s_runInside);
 		}
 
 		lv_obj_t* glyphObj(lv_obj_t* parent, int32_t x, int32_t y, int32_t size, GlyphSpec* spec)
@@ -228,7 +230,9 @@ namespace UI::Cnc
 				m_root, S(x), y(yy), SL(x, BtnW), SL(yy, h), (Origin)i, big ? BigLabels[i - 9] : nullptr, big);
 			m_originButtons[i].onPress([this, i] { originPressed(i); });
 		}
-		lv_obj_t* sep = CreateBare(m_root, S(SepX), y(LabelY), SL(SepX, SeparatorW), SL(LabelY, PickBottom - LabelY));
+		// The accent line runs down to the bottom row: left of it ORIGIN and its side, right of it MODE and PROBE
+		const int32_t bottomEnd = BottomY + BottomH;
+		lv_obj_t* sep = CreateBare(m_root, S(SepX), y(LabelY), SL(SepX, SeparatorW), SL(LabelY, bottomEnd - LabelY));
 		lv_obj_set_style_bg_color(sep, accent, 0);
 		lv_obj_set_style_bg_opa(sep, LV_OPA_COVER, 0);
 
@@ -285,22 +289,25 @@ namespace UI::Cnc
 			}
 		}
 
-		// Bottom row: probe signal + RUN PROBE, or START (manual)
-		m_probeTile.create(m_root, S(GridX), y(BottomY), SL(GridX, StatusW), SL(BottomY, BottomH), "PROBE");
-		const int32_t runX = GridX + StatusW + 8;
-		auto greenButton = [&](TextButton& b, int32_t x, int32_t w, const char* text)
-		{
-			b.create(m_root, S(x), y(BottomY), SL(x, w), SL(BottomY, BottomH), text, Font::Large());
-			b.setColours(Colour::ButtonText(), Colour::Green());
-			b.setBorderVisible(false);
-			b.setPressedLook(false);
-			b.onPress([this] { runPressed(); });
-		};
-		greenButton(m_run, runX, RowW - StatusW - 8, "RUN PROBE");
-		greenButton(m_start, GridX, RowW, "START");
+		// Bottom row: left of the accent line the OUTSIDE | INSIDE switch under the origins, right of it
+		// PROBE (a dot shows the probe signal) or START (manual)
+		m_side.create(m_root,
+					  S(GridX),
+					  y(BottomY),
+					  SL(GridX, 3 * BtnW + 2 * BtnGap),
+					  SL(BottomY, BottomH),
+					  "OUTSIDE",
+					  "INSIDE",
+					  true);
+		m_side.onPress([this] { sidePressed(); });
+		m_run.create(m_root, S(ParX), y(BottomY), SL(ParX, ParW), SL(BottomY, BottomH), "PROBE");
+		m_run.onPress([this] { runPressed(); });
+		m_start.create(m_root, S(ParX), y(BottomY), SL(ParX, ParW), SL(BottomY, BottomH), "START");
+		m_start.onPress([this] { runPressed(); });
 
 		// Initial state; the parameter values are saved with the machine settings
 		m_originButtons[m_origin].setSelected(true);
+		updateSide();
 		m_values = Settings::Get().probe;
 		for (size_t i = 0; i < NumParams; ++i)
 		{
@@ -355,8 +362,7 @@ namespace UI::Cnc
 			}
 		}
 		const bool manual = (State::GetProbeMode() == State::ProbeMode::Manual);
-		m_probeTile.show(!manual); // the cutter is the probe: no signal to show
-		m_run.show(!manual);
+		m_run.show(!manual); // the cutter is the probe in MANUAL: no signal to show
 		m_start.show(manual);
 	}
 
@@ -364,13 +370,47 @@ namespace UI::Cnc
 	{
 		if (!State::ProbeReported())
 		{
-			m_probeTile.setState("-", Colour::Border());
+			m_run.setSignal(ProbeButton::Signal::None);
 		}
 		else
 		{
-			const bool closed = State::ProbeClosed();
-			m_probeTile.setState(closed ? "CLOSED" : "OPEN", closed ? Colour::StopRed() : Colour::Green());
+			m_run.setSignal(State::ProbeClosed() ? ProbeButton::Signal::Closed : ProbeButton::Signal::Open);
 		}
+	}
+
+	// ---- Side: OUTSIDE | INSIDE ----------------------------------------------------------------
+
+	// BORE is always inside and BOSS always outside; for Z TOP the side does not matter. Otherwise it is
+	// the operator's choice (m_userInside), which stays when BORE, BOSS or Z TOP is picked in between.
+	bool WcsProbePage::sideLocked() const
+	{
+		return m_origin >= (size_t)Origin::Bore;
+	}
+
+	bool WcsProbePage::inside() const
+	{
+		return (m_origin == (size_t)Origin::Bore) ? true : (m_origin == (size_t)Origin::Boss) ? false : m_userInside;
+	}
+
+	void WcsProbePage::updateSide()
+	{
+		const bool in = inside();
+		m_side.setSecondActive(in);
+		m_side.setLocked(sideLocked());
+		for (size_t i = 0; i < NumOrigins; ++i)
+		{
+			m_originButtons[i].setInside(in);
+		}
+	}
+
+	void WcsProbePage::sidePressed()
+	{
+		if (sideLocked())
+		{
+			return;
+		}
+		m_userInside = !m_userInside;
+		updateSide();
 	}
 
 	float* WcsProbePage::valueOf(Param p)
@@ -433,6 +473,7 @@ namespace UI::Cnc
 		m_originButtons[m_origin].setSelected(false);
 		m_origin = origin;
 		m_originButtons[m_origin].setSelected(true);
+		updateSide();
 	}
 
 	void WcsProbePage::openNumpad(const char* tag, float value, float min, float max, std::function<void(float)> onOk)
@@ -537,11 +578,15 @@ namespace UI::Cnc
 		const char* code = OriginCodes[m_origin];
 		m_runOrigin = m_origin;
 		const unsigned int w = m_values.storeTo + 1u;
+		// I1 = probe the pocket (inside) side; only for corners, edges and centre: BORE / BOSS say it by themselves
+		const bool insideRun = (m_origin < (size_t)Origin::Bore) && inside();
+		s_runInside = insideRun;
+		const char* side = insideRun ? " I1" : "";
 		switch (mode)
 		{
 		case State::ProbeMode::Auto:
 			State::Send(fmt::format("M98 P\"0:/sys/probe/probe_auto.g\" O\"{:s}\" D{:.3f} C{:.3f} S{:.3f} Z{:.3f} "
-									"L{:.3f} B{:.3f} W{:d}\n",
+									"L{:.3f} B{:.3f} W{:d}{:s}\n",
 									code,
 									m_values.tip,
 									m_values.autoClear,
@@ -549,20 +594,22 @@ namespace UI::Cnc
 									m_values.zDepth,
 									m_values.stockX,
 									m_values.stockY,
-									w));
+									w,
+									side));
 			openAutoPopup(); // the machine now probes on its own
 			break;
 		case State::ProbeMode::Semi:
-			State::Send(fmt::format("M98 P\"0:/sys/probe/probe_semi.g\" O\"{:s}\" D{:.3f} C{:.3f} S{:.3f} W{:d}\n",
+			State::Send(fmt::format("M98 P\"0:/sys/probe/probe_semi.g\" O\"{:s}\" D{:.3f} C{:.3f} S{:.3f} W{:d}{:s}\n",
 									code,
 									m_values.tip,
 									m_values.semiClear,
 									m_values.semiSearch,
-									w));
+									w,
+									side));
 			break;
 		default:
 			State::Send(fmt::format(
-				"M98 P\"0:/sys/probe/probe_manual.g\" O\"{:s}\" D{:.3f} W{:d}\n", code, m_values.toolDia, w));
+				"M98 P\"0:/sys/probe/probe_manual.g\" O\"{:s}\" D{:.3f} W{:d}{:s}\n", code, m_values.toolDia, w, side));
 			break;
 		}
 	}

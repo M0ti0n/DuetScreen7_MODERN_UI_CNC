@@ -441,13 +441,15 @@ namespace UI::Cnc
 			return;
 		}
 		// Fold the offset step into the active WCS Z on the Duet, from its own current values (Z found by its
-		// letter: it need not be axis 2)
+		// letter: it need not be axis 2). The WCS number is the screen's own (RRF 3.7 warns about the obsolete
+		// move.workplaceNumber in expressions).
 		const auto z = OM::Move::GetAxisByLetter('Z');
 		const size_t zi = z ? z->index : 2;
-		State::Send(
-			fmt::format("G10 L2 P{{move.workplaceNumber + 1}} "
-						"Z{{move.axes[{0:d}].workplaceOffsets[move.workplaceNumber] + move.axes[{0:d}].babystep}}\n",
-						zi));
+		const size_t wcs = State::ActiveWorkplace();
+		State::Send(fmt::format("G10 L2 P{1:d} Z{{move.axes[{0:d}].workplaceOffsets[{2:d}] + move.axes[{0:d}].babystep}}\n",
+								zi,
+								wcs + 1,
+								wcs));
 		State::Send("M290 R0 Z0\n");
 		State::MarkOffsetsUnsaved();
 	}

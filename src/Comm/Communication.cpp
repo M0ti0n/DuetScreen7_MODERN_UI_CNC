@@ -65,7 +65,7 @@ namespace Comm
 		Seq{.seqid = rcvSeqsBoards, .lastSeq = 0, .state = SeqStateInit, .key = "boards", .flags = "v"},
 #endif
 #if FETCH_MOVE
-		Seq{.seqid = rcvSeqsMove, .lastSeq = 0, .state = SeqStateInit, .key = "move", .flags = "vn"},
+		Seq{.seqid = rcvSeqsMove, .lastSeq = 0, .state = SeqStateInit, .key = "move", .flags = "vno"},
 #endif
 #if FETCH_HEAT
 		// TODO 'o' needed as we still use the 'bedHeaters' and 'chamberHeaters' fields
@@ -96,7 +96,7 @@ namespace Comm
 		Seq{.seqid = rcvSeqsSensors, .lastSeq = 0, .state = SeqStateInit, .key = "sensors", .flags = "v"},
 #endif
 #if FETCH_STATE
-		Seq{.seqid = rcvSeqsState, .lastSeq = 0, .state = SeqStateInit, .key = "state", .flags = "vn"},
+		Seq{.seqid = rcvSeqsState, .lastSeq = 0, .state = SeqStateInit, .key = "state", .flags = "vno"},
 #endif
 #if FETCH_VOLUMES
 		Seq{.seqid = rcvSeqsVolumes, .lastSeq = 0, .state = SeqStateInit, .key = "volumes", .flags = "v"},

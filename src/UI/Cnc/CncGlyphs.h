@@ -56,9 +56,11 @@ namespace UI::Cnc
 		Bore, Boss, ZTop,
 		None
 	};
-	// Simplified line icon of an origin (corner = L, edge = bar, centre = crosshair; the dot marks the
-	// point that becomes the origin). 'bg' is the colour behind it. PanelDue CncDrawOriginGlyph.
-	void DrawOriginGlyph(Pen& pen, Origin kind, lv_color_t glyph, lv_color_t bg);
+	// Simplified line icon of an origin (corner = L, edge = bar, centre = crosshair). On corners and
+	// edges the dot is the probe: outside the part touching the line from the outside (default), or
+	// 'inside' = in the pocket, touching it from the inside. 'bg' is the colour behind it. Based on
+	// PanelDue CncDrawOriginGlyph.
+	void DrawOriginGlyph(Pen& pen, Origin kind, lv_color_t glyph, lv_color_t bg, bool inside = false);
 	// JOB LIST SEARCH tile: magnifying glass ('bg' = the tile colour)
 	// Jog direction icons (MOVE buttons, jog prompt): an arrow (triangle head and stem) in 6 directions,
 	// or an arrow on an arc (CCW, mirrored CW). Drawn in a size x size box centred on (cx, cy), screen px.

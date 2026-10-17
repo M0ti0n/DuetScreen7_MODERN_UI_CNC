@@ -23,7 +23,7 @@ namespace UI::Cnc
 			case 0:
 				return lv_color_hex(0xEE7004); // Orange Fire
 			case 1:
-				return lv_color_hex(0xFF0000); // Red Voron
+				return lv_color_hex(0xFF61B6); // Pink
 			case 2:
 				return lv_color_hex(0x007CF7); // Duet Blue
 			case 3:

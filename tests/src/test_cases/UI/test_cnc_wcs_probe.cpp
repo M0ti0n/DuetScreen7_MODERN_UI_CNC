@@ -170,6 +170,58 @@ TEST_F(TestCncWcsProbe, RunAutoAndProgress)
 	EXPECT_FALSE(page.autoRunning());
 }
 
+// ---- OUTSIDE | INSIDE ----------------------------------------------------------------------------
+
+TEST_F(TestCncWcsProbe, InsideAddsI1ForCornersAndEdges)
+{
+	auto view = makeView();
+	auto& page = view->getWcsProbePage();
+	page.originPressed(0);
+	EXPECT_FALSE(page.inside());
+	EXPECT_FALSE(page.sideLocked());
+	page.runPressed();
+	EXPECT_EQ(last(), "M98 P\"0:/sys/probe/probe_auto.g\" O\"TL\" D2.000 C5.000 S10.000 Z3.000 L100.000 B60.000 W1\n");
+	State::StatusChanged(OM::PrinterStatus::busy);
+	State::StatusChanged(OM::PrinterStatus::idle);
+
+	page.sidePressed();
+	EXPECT_TRUE(page.inside());
+	EXPECT_TRUE(lv_test_screenshot_compare("cnc/wcs_probe_inside_corner.png"));
+	page.runPressed();
+	EXPECT_EQ(last(), "M98 P\"0:/sys/probe/probe_auto.g\" O\"TL\" D2.000 C5.000 S10.000 Z3.000 L100.000 B60.000 W1 I1\n");
+	State::StatusChanged(OM::PrinterStatus::busy);
+	State::StatusChanged(OM::PrinterStatus::idle);
+}
+
+TEST_F(TestCncWcsProbe, BoreAndBossForceTheSideAndRememberTheChoice)
+{
+	auto view = makeView();
+	auto& page = view->getWcsProbePage();
+	page.originPressed(0);
+	page.sidePressed(); // INSIDE
+
+	page.originPressed(10); // BOSS: always outside
+	EXPECT_TRUE(page.sideLocked());
+	EXPECT_FALSE(page.inside());
+	page.sidePressed(); // ignored
+	EXPECT_FALSE(page.inside());
+
+	page.originPressed(9); // BORE: always inside, but the macro knows from the origin
+	EXPECT_TRUE(page.sideLocked());
+	EXPECT_TRUE(page.inside());
+	EXPECT_TRUE(lv_test_screenshot_compare("cnc/wcs_probe_bore_locked.png"));
+	page.runPressed();
+	EXPECT_EQ(last().find(" I1"), std::string::npos);
+	State::StatusChanged(OM::PrinterStatus::busy);
+	State::StatusChanged(OM::PrinterStatus::idle);
+
+	page.originPressed(11); // Z TOP
+	EXPECT_TRUE(page.sideLocked());
+	page.originPressed(1); // back to an edge: the earlier choice returns
+	EXPECT_FALSE(page.sideLocked());
+	EXPECT_TRUE(page.inside());
+}
+
 TEST_F(TestCncWcsProbe, AutoPopupClosesWhenTheMacroNeverStarted)
 {
 	auto view = makeView();

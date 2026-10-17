@@ -239,7 +239,7 @@ namespace UI
 		{
 			return;
 		}
-		Comm::DUET.SendGcodef("G10 L20 P{{move.workplaceNumber + 1}} {:c}0\n", m_rowLetters[row]);
+		Comm::DUET.SendGcodef("G10 L20 P{:d} {:c}0\n", Cnc::State::ActiveWorkplace() + 1, m_rowLetters[row]);	// RRF 3.7: move.workplaceNumber is obsolete
 	}
 
 	void CncHomePresenter::showPage(unsigned int page)

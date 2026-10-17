@@ -157,7 +157,6 @@ namespace UI::CncLayout
 		constexpr int32_t AutoTileH = (PickBottom - GridY - 2 * TileGap) / 3;	// 76
 		constexpr int32_t RowTileH = 52, RowTileGap = 6;					// SEMI / MANUAL parameter list tiles
 		constexpr int32_t BottomY = 601, BottomH = Offsets::ContentBottomPd - BottomY;	// 56
-		constexpr int32_t StatusW = 150;
 		constexpr int32_t RowW = 468;								// the content width (PanelDue ContentW)
 
 		// Popups under the full DRO (auto probe progress, jog prompt), 460 x 396 at (10, 318)
