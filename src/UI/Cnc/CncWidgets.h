@@ -77,6 +77,9 @@ namespace UI::Cnc
 		bool secondActive() const { return m_second; }
 		void setLocked(bool locked);
 		void onPress(Handler h) { m_onPress = std::move(h); }
+		// Which half the last touch hit (horizontal only): 0 = left, 1 = right, -1 = unknown (no touch point,
+		// e.g. called from code). A side switch picks the touched half instead of toggling.
+		int pressedHalf() const { return m_pressedHalf; }
 
 	  private:
 		void applyLook();
@@ -87,6 +90,7 @@ namespace UI::Cnc
 		lv_obj_t* m_bottom = nullptr;
 		int32_t m_height = 0, m_width = 0;			// the object's size is not laid out yet when applyLook runs
 		bool m_second = false, m_locked = false, m_horizontal = false;
+		int m_pressedHalf = -1;
 		Handler m_onPress;
 	};
 

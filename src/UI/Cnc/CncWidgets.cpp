@@ -274,10 +274,21 @@ namespace UI::Cnc
 			[](lv_event_t* e)
 			{
 				auto* self = static_cast<SegmentToggle*>(lv_event_get_user_data(e));
+				self->m_pressedHalf = -1;
+				lv_indev_t* indev = lv_indev_active();
+				if (self->m_horizontal && indev != nullptr)
+				{
+					lv_point_t p;
+					lv_indev_get_point(indev, &p);
+					lv_area_t a;
+					lv_obj_get_coords(self->m_obj, &a);
+					self->m_pressedHalf = (p.x >= a.x1 + lv_area_get_width(&a) / 2) ? 1 : 0;
+				}
 				if (self->m_onPress)
 				{
 					self->m_onPress();
 				}
+				self->m_pressedHalf = -1;
 			},
 			LV_EVENT_PRESSED,
 			this);

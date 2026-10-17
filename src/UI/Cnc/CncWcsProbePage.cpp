@@ -409,7 +409,8 @@ namespace UI::Cnc
 		{
 			return;
 		}
-		m_userInside = !m_userInside;
+		const int half = m_side.pressedHalf();					// a touch picks the half it hit; else toggle
+		m_userInside = (half < 0) ? !m_userInside : (half == 1);
 		updateSide();
 	}
 

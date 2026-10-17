@@ -193,6 +193,21 @@ TEST_F(TestCncWcsProbe, InsideAddsI1ForCornersAndEdges)
 	State::StatusChanged(OM::PrinterStatus::idle);
 }
 
+TEST_F(TestCncWcsProbe, SideSwitchPicksTheTouchedHalf)
+{
+	auto view = makeView();
+	auto& page = view->getWcsProbePage();
+	page.originPressed(0);
+	lv_test_mouse_click_at(202, 785); // INSIDE
+	EXPECT_TRUE(page.inside());
+	lv_test_mouse_click_at(202, 785); // INSIDE again: stays
+	EXPECT_TRUE(page.inside());
+	lv_test_mouse_click_at(73, 785); // OUTSIDE
+	EXPECT_FALSE(page.inside());
+	lv_test_mouse_click_at(73, 785);
+	EXPECT_FALSE(page.inside());
+}
+
 TEST_F(TestCncWcsProbe, BoreAndBossForceTheSideAndRememberTheChoice)
 {
 	auto view = makeView();
