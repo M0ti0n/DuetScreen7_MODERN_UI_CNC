@@ -5,7 +5,58 @@
 
 DuetScreen is the touchscreen UI for Duet3D displays, built with LVGL. It runs on [Duet3D screen hardware](https://docs.duet3d.com/Duet3D_hardware/Accessories/DuetScreen) and can also be compiled for x86/Arm on Linux and macOS to support development and testing.
 
-## UI preview
+## CNC UI (this fork)
+
+This fork adds a portrait CNC (mill / router) UI for the 600 x 1024 Duet3D screen, ported from the
+[PanelDue Modern UI CNC](https://github.com/M0ti0n/PanelDue_Modern_UI_CNC) firmware and built with
+`DUETSCREEN_CNC_UI=ON`. The screenshots are the CNC test references in [tests/ref_imgs/cnc](tests/ref_imgs/cnc);
+details are in [docs/CNC_UI.md](docs/CNC_UI.md).
+
+### CONTROL
+
+Jogging by axis and step (RAPID / SLOW), homing, SAFE Z, XY0, coolant and custom actions.
+
+![CONTROL](docs/images/cnc/cnc_control.png)
+
+### WCS: OFFSETS, TOOLS, PROBE
+
+Work offsets G54 to G59 (copy, shift, Z offset step), the tool table with LOAD / MEASURE / SET Z, and probing:
+origin picker, OUTSIDE / INSIDE switch, AUTO / SEMI-AUTO / MANUAL parameters and the PROBE button with the probe signal.
+
+![WCS](docs/images/cnc/cnc_wcs.png)
+
+### JOB: JOB STATUS, JOB LIST
+
+The running job with feed and spindle overrides, PAUSE / ABORT, and the file list with search.
+
+![JOB](docs/images/cnc/cnc_job.png)
+
+### JOB: PREVIEW
+
+Not on the PanelDue: the toolpath of the selected file in ISO / TOP / FRONT / SIDE views, the simulated PART,
+cut sections, operations with their tools and warnings, and the progress of the running job.
+
+![PREVIEW](docs/images/cnc/cnc_preview.png)
+
+### MACROS
+
+Macros as a list or a grid, with search.
+
+![MACROS](docs/images/cnc/cnc_macros.png)
+
+### SYSTEM: ALERT, CONSOLE
+
+Errors and warnings newest first, the console with G-code entry.
+
+![SYSTEM](docs/images/cnc/cnc_system.png)
+
+### SYSTEM: SETTINGS
+
+System, customization and jog direction pages.
+
+![SETTINGS](docs/images/cnc/cnc_settings.png)
+
+## UI preview (stock printer UI)
 
 The screenshots below are taken from the repository test references in [tests/ref_imgs](tests/ref_imgs).
 
