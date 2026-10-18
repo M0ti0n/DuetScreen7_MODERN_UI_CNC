@@ -9,32 +9,40 @@ DuetScreen is the touchscreen UI for Duet3D displays, built with LVGL. It runs o
 
 This fork adds a portrait CNC (mill / router) UI for the 600 x 1024 Duet3D screen, ported from the
 [PanelDue Modern UI CNC](https://github.com/M0ti0n/PanelDue_Modern_UI_CNC) firmware and built with
-`DUETSCREEN_CNC_UI=ON`. The screenshots are the CNC test references in [tests/ref_imgs/cnc](tests/ref_imgs/cnc);
-details are in [docs/CNC_UI.md](docs/CNC_UI.md).
+`DUETSCREEN_CNC_UI=ON`. The tabs are the same as on the PanelDue, so most pictures below are the PanelDue ones;
+PROBE and PREVIEW are taken from this firmware. Details are in [docs/CNC_UI.md](docs/CNC_UI.md).
 
 ### CONTROL
 
 Jogging by axis and step (RAPID / SLOW), homing, SAFE Z, XY0, coolant and custom actions.
 
-![CONTROL](docs/images/cnc/cnc_control.png)
+![CONTROL](docs/images/cnc/pd_cnc_control_13m.png)
 
-### WCS: OFFSETS, TOOLS, PROBE
+### WCS: OFFSETS, TOOLS
 
-Work offsets G54 to G59 (copy, shift, Z offset step), the tool table with LOAD / MEASURE / SET Z, and probing:
-origin picker, OUTSIDE / INSIDE switch, AUTO / SEMI-AUTO / MANUAL parameters and the PROBE button with the probe signal.
+Work offsets G54 to G59 (copy, shift, Z offset step) and the tool table with LOAD / MEASURE / SET Z.
 
-![WCS](docs/images/cnc/cnc_wcs.png)
+![WCS OFFSETS and TOOLS](docs/images/cnc/pd_cnc_wcs_offsets_tools.png)
+
+### WCS: PROBE
+
+Origin picker (corners, edges, centre, BORE, BOSS, Z TOP), OUTSIDE / INSIDE switch (the dot on the corner and
+edge symbols moves inside the line; BORE / BOSS / Z TOP lock it), AUTO / SEMI-AUTO / MANUAL parameters and one
+PROBE button that shows the probe: green ring = open, red disc = triggered. From left: AUTO outside, INSIDE,
+the AUTO progress popup, SEMI-AUTO.
+
+![PROBE](docs/images/cnc/cnc_probe.png)
 
 ### JOB: JOB STATUS, JOB LIST
 
-The running job with feed and spindle overrides, PAUSE / ABORT, and the file list with search.
+The running job with feed and spindle overrides, PAUSE / ABORT, and the file list.
 
-![JOB](docs/images/cnc/cnc_job.png)
+![JOB](docs/images/cnc/pd_cnc_job_tab_13m.png)
 
 ### JOB: PREVIEW
 
-Not on the PanelDue: the toolpath of the selected file in ISO / TOP / FRONT / SIDE views, the simulated PART,
-cut sections, operations with their tools and warnings, and the progress of the running job.
+Not on the PanelDue: the toolpath of the selected file, the simulated PART, cut sections, operations with their
+tools and warnings, and the progress of the running job. From left: ISO toolpath, PART, CUT X section, running job.
 
 ![PREVIEW](docs/images/cnc/cnc_preview.png)
 
@@ -42,19 +50,23 @@ cut sections, operations with their tools and warnings, and the progress of the 
 
 Macros as a list or a grid, with search.
 
-![MACROS](docs/images/cnc/cnc_macros.png)
+![MACROS](docs/images/cnc/pd_cnc_macros_search_13m.png)
 
-### SYSTEM: ALERT, CONSOLE
+### SYSTEM: ALERT, CONSOLE, SETTINGS
 
-Errors and warnings newest first, the console with G-code entry.
+Errors and warnings newest first, the console with G-code entry, and the settings pages.
 
-![SYSTEM](docs/images/cnc/cnc_system.png)
+![SYSTEM ALERT and CONSOLE](docs/images/cnc/pd_cnc_system_alert_console_13m.png)
 
-### SYSTEM: SETTINGS
+![SETTINGS](docs/images/cnc/pd_cnc_settings_13m.png)
 
-System, customization and jog direction pages.
+### Jog direction (SETTINGS page 3)
 
-![SETTINGS](docs/images/cnc/cnc_settings.png)
+Arrows and degree signs on the MOVE buttons, per axis.
+
+![AXIS / ARROW SETUP A](docs/images/cnc/PD-AXIS-ARROW_SETUP_A.png)
+![AXIS / ARROW SETUP B](docs/images/cnc/PD-AXIS-ARROW_SETUP_B.png)
+![AXIS / ARROW SETUP C](docs/images/cnc/PD-AXIS-ARROW_SETUP_C.png)
 
 ## UI preview (stock printer UI)
 
