@@ -399,7 +399,7 @@ A G-code terminal.
 
 Three pages (arrows at the bottom). A tile opens a popup with the choices; most changes take effect at once. Page 1 is stored **on the screen**.
 
-![SETTINGS](docs/images/settings_system.png)
+![SETTINGS pages 1, 2, 3](docs/images/settings_pages.png)
 
 ### Important settings
 
@@ -418,8 +418,6 @@ Three pages (arrows at the bottom). A tile opens a popup with the choices; most 
 ## SYSTEM → SETTINGS → CUSTOMIZATION
 
 Page 2. These settings are stored **on the machine** in `0:/sys/cnc-settings.g`, so they follow the machine, not the screen.
-
-![SETTINGS CUSTOMIZATION](docs/images/settings_customization.png)
 
 ### Important settings
 
@@ -442,8 +440,6 @@ Page 2. These settings are stored **on the machine** in `0:/sys/cnc-settings.g`,
 ## SYSTEM → SETTINGS → JOG DIRECTION
 
 Page 3, also stored on the machine.
-
-![SETTINGS JOG DIRECTION](docs/images/settings_jog_direction.png)
 
 - **Icon pair per axis** — the arrows shown on the MOVE buttons: LEFT / RIGHT, DOWN / UP, 225° / 45°, CCW / CW or NONE, and where the **+** is.
 - **° ON CCW / CW AXES** — adds a "°" to the step buttons of a rotary axis.
