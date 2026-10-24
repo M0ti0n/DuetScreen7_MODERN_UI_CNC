@@ -12,6 +12,7 @@
 #include "CncTheme.h"
 #include <algorithm>
 #include <cstring>
+#include <cstdlib>
 #include <fmt/format.h>
 #include <vector>
 
@@ -342,7 +343,8 @@ namespace UI::Cnc
 			 { return showJogPrompt(t, x, c, cancel, seq); },
 			 [this] { return jogPromptOpen(); },
 			 [this] { closeJogPrompt(); },
-			 [this](const std::string& x) { autoError(x); }});
+			 [this](const std::string& x) { autoError(x); },
+			 [this](const std::string& x) { tipMeasured(x); }});
 
 		m_timer = lv_timer_create(
 			[](lv_timer_t* t) { static_cast<WcsProbePage*>(lv_timer_get_user_data(t))->tick(); }, 100, this);
@@ -502,7 +504,21 @@ namespace UI::Cnc
 		switch (p)
 		{
 		case PTip:
-			openNumpad("TIP \xC3\x98", m_values.tip, 0.1f, 20.0f, set);
+			// Type it, or measure it: the tip macro probes a ring gauge and reports "PROBE=TIP"
+			Popup::Choose("TIP \xC3\x98",
+						  {"ENTER VALUE", "CALIBRATE"},
+						  0,
+						  [this, set](size_t c)
+						  {
+							  if (c == 0)
+							  {
+								  openNumpad("TIP \xC3\x98", m_values.tip, 0.1f, 20.0f, set);
+							  }
+							  else
+							  {
+								  calibrateTip();
+							  }
+						  });
 			break;
 		case PAutoClear:
 		case PSemiClear:
@@ -553,27 +569,99 @@ namespace UI::Cnc
 		}
 	}
 
-	void WcsProbePage::runPressed()
+	// CALIBRATE TIP: probe a ring gauge of known diameter; the macro measures it with the tip it was
+	// given and answers M291 S1 R"PROBE=TIP" P"<effective tip diameter>"
+	void WcsProbePage::calibrateTip()
 	{
-		const State::ProbeMode mode = State::GetProbeMode();
+		if (refuseProbe(true))
+		{
+			return;
+		}
+		Popup::NumpadSpec pad;
+		pad.tag = "RING GAUGE \xC3\x98";
+		pad.unit = "mm";
+		pad.value = m_ringGauge;
+		pad.decimals = 3;
+		pad.allowDecimal = true;
+		pad.allowMinus = false;
+		pad.min = 1.0f;
+		pad.max = 200.0f;
+		pad.onOk = [this](float gauge)
+		{
+			m_ringGauge = gauge;
+			Popup::Confirm("CALIBRATE TIP",
+						   {"Put the probe tip into the ring gauge,", "about in its centre and below its top.", "Then start."},
+						   [this, gauge]
+						   {
+							   if (refuseProbe(true))
+							   {
+								   return;
+							   }
+							   State::Send(fmt::format("M98 P\"0:/sys/probe/probe_tip.g\" D{:.3f} T{:.3f}\n", gauge, m_values.tip));
+						   });
+		};
+		Popup::Numpad(pad);
+	}
+
+	void WcsProbePage::tipMeasured(const std::string& text)
+	{
+		const float tip = std::strtof(text.c_str(), nullptr);
+		if (!(tip >= 0.1f && tip <= 20.0f))
+		{
+			Popup::Alert(fmt::format("The tip calibration gave \"{:s}\":\nnot a usable tip diameter.", text));
+			return;
+		}
+		m_values.tip = tip;
+		updateTileText(PTip);
+		Popup::Info("TIP \xC3\x98", fmt::format("Measured tip: {:.3f} mm\nTIP \xC3\x98 is set to it.", tip));
+	}
+
+	void WcsProbePage::setVisible(bool visible)
+	{
+		if (m_root == nullptr)
+		{
+			return;
+		}
+		if (visible)
+		{
+			lv_obj_remove_flag(m_root, LV_OBJ_FLAG_HIDDEN);
+		}
+		else
+		{
+			lv_obj_add_flag(m_root, LV_OBJ_FLAG_HIDDEN);
+		}
+	}
+
+	bool WcsProbePage::refuseProbe(bool needsProbe)
+	{
 		if (State::JobActive())
 		{
 			Popup::Refuse(LockedJob);
-			return;
+			return true;
 		}
 		if (State::Status() != OM::PrinterStatus::idle)
 		{
 			Popup::Refuse("Wait until the machine is idle."); // e.g. a probe macro still running
-			return;
+			return true;
 		}
 		if (!State::XyzHomed())
 		{
 			Popup::Refuse("Home X, Y and Z first.");
-			return;
+			return true;
 		}
-		if (mode != State::ProbeMode::Manual && State::ProbeClosed())
+		if (needsProbe && State::ProbeClosed())
 		{
 			Popup::Refuse("Probe is closed (triggered).\nCheck the probe and its wiring.");
+			return true;
+		}
+		return false;
+	}
+
+	void WcsProbePage::runPressed()
+	{
+		const State::ProbeMode mode = State::GetProbeMode();
+		if (refuseProbe(mode != State::ProbeMode::Manual))
+		{
 			return;
 		}
 		const char* code = OriginCodes[m_origin];

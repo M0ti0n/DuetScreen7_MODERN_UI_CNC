@@ -48,6 +48,7 @@ namespace UI::Cnc::Popup
 						  Handler onOk,
 						  bool okAvailable = true);
 
+
 	// Confirm in the warning look (amber title with a triangle, amber text): RUN with warnings
 	void ConfirmWarning(std::string_view title, const std::vector<std::string>& lines, Handler onOk);
 

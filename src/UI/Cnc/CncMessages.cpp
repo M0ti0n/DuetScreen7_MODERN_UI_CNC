@@ -231,7 +231,15 @@ namespace UI::Cnc::Messages
 			{
 			case Mode::Info:
 			case Mode::InfoClose:
-				if (autoRunning())
+				if (msg.title == "PROBE=TIP" && s_hooks.tipResult)
+				{
+					s_hooks.tipResult(msg.text); // the tip calibration's result: TIP Ø
+					if (msg.mode == Mode::InfoClose)
+					{
+						send(fmt::format("M292 P0 S{:d}", seq));
+					}
+				}
+				else if (autoRunning())
 				{
 					s_hooks.autoMessage(msg.title, msg.text); // progress of the auto probe macro
 				}

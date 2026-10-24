@@ -1112,6 +1112,8 @@ class Machine:
         elif code == "M32":
             name = p.text("P") or next((raw for (raw, kind) in p.w.values() if kind == "str"), "")
             self.start_job(name)
+        elif code == "M36.2":
+            self.reply(json.dumps(self.file_fragment(p.text("P"), int(p.num("S") or 0))))
         elif code == "M36":
             self.reply(json.dumps(self.file_info(p.text("P") or p.text(""))))
         elif code == "M98":
@@ -1703,6 +1705,17 @@ class Machine:
         return {"err": 0, "fileName": self.om_name(path), "size": st.st_size, "lastModified": iso(st.st_mtime),
                 "height": 0.0, "layerHeight": 0.0, "numLayers": 0, "printTime": self.estimate(text),
                 "simulatedTime": None, "filament": [], "generatedBy": gen, "thumbnails": []}
+
+    # M36.2: a file in 1 KB pieces (the panel's file reader: the CNC UI's file editor over USB / UART)
+    def file_fragment(self, name, offset):
+        path = self.path(name, "gcodes")
+        if not path.is_file():
+            return {"fragment": {"fileName": name, "offset": offset, "err": 1}}
+        data = path.read_bytes()
+        chunk = data[offset:offset + 1024]
+        nxt = offset + len(chunk) if offset + len(chunk) < len(data) else 0
+        return {"fragment": {"fileName": name, "offset": offset, "data": chunk.decode("utf-8", errors="replace"),
+                             "next": nxt, "err": 0}}
 
     def rename(self, old, new, replace):
         src, dst = self.path(old, "gcodes"), self.path(new, "gcodes")

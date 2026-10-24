@@ -354,7 +354,7 @@ TEST_F(TestCncSettings, CustomMacroPickAndLabel)
 	auto& macros = view->getMacrosPage();
 	EXPECT_EQ(macros.labelLeft(), "SELECT");
 	load_model_data_from_file("tests/object_model/cnc/filelist_macros.json");
-	macros.cellPressed(2); // Spindle_warmup
+	macros.cellPressed(3); // Spindle_warmup (after the sys row)
 	EXPECT_EQ(view->getPage(), V::PageSystem);
 	EXPECT_EQ(view->getSubTab(V::PageSystem), (unsigned int)V::SystemSettingsTab);
 	EXPECT_EQ(Settings::Get().macros[2], "0:/macros/02_Spindle_warmup.g");

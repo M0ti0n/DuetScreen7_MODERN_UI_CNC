@@ -156,6 +156,7 @@ namespace UI::Cnc
 		};
 
 		void create(lv_obj_t* parent, int32_t x, int32_t y, int32_t w, int32_t h, const char* text);
+		void setText(const std::string& text);
 		void setSignal(Signal signal);
 		Signal signal() const { return m_signal; }
 		void show(bool visible);
@@ -181,6 +182,7 @@ namespace UI::Cnc
 					bool dropdown);
 		void setValue(const std::string& value);
 		const std::string& value() const { return m_value; }
+		void setLabel(const std::string& label, bool dropdown);	// one tile for several parameters (NXT)
 		void show(bool visible);
 		void onPress(Handler h) { m_onPress = std::move(h); }
 

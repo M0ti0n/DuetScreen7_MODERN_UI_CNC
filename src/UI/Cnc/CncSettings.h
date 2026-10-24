@@ -5,7 +5,7 @@
  * ported from the PanelDue CNC UI (CncSettingsPage.cpp). They are globals on the machine, kept in
  * 0:/sys/cnc-settings.g, which config.g runs at power-on:
  *
- *   global.cncProbeMode            0 / 1 / 2                 AUTO / SEMI-AUTO / MANUAL
+ *   global.cncProbeMode            0 / 1 / 2 / 3             AUTO / SEMI-AUTO / MANUAL / NXT
  *   global.cncMeasureAfterChange   true / false              ER COLLET / TOOL HOLDER
  *   global.cncRememberTool         true / false
  *   global.cncToolSetter           true / false

@@ -128,7 +128,9 @@ TEST_F(TestCncWcsProbe, StockAskedXThenY)
 	Popup::PressOk();
 	EXPECT_EQ(page.tileText(P::PStock), "150x80.5");
 
-	page.paramPressed(P::PTip); // 0.1 .. 20
+	page.paramPressed(P::PTip); // 0.1 .. 20: ENTER VALUE or CALIBRATE
+	Popup::PressChoice(0);
+	Popup::PressOk();
 	for (char c : std::string("25"))
 	{
 		Popup::NumpadKey(c);
@@ -385,6 +387,8 @@ TEST_F(TestCncWcsProbe, InfoMessageNotOverAPopupInUse)
 {
 	auto view = makeView();
 	view->getWcsProbePage().paramPressed(P::PTip);
+	Popup::PressChoice(0); // ENTER VALUE
+	Popup::PressOk();
 	Popup::NumpadKey('3');
 	message(M::Info, 1, "", "Hello");
 	EXPECT_TRUE(Popup::IsNumpadOpen()); // the value being typed is not thrown away
@@ -392,4 +396,32 @@ TEST_F(TestCncWcsProbe, InfoMessageNotOverAPopupInUse)
 	// A message that needs an answer does replace it
 	message(M::InfoConfirm, 2, "Confirm", "OK?");
 	EXPECT_TRUE(Popup::IsMessageOpen());
+}
+
+// ---- TIP Ø > CALIBRATE ------------------------------------------------------------------------
+
+TEST_F(TestCncWcsProbe, CalibrateTip)
+{
+	auto view = makeView();
+	auto& page = view->getWcsProbePage();
+	page.paramPressed(P::PTip);
+	Popup::PressChoice(1); // CALIBRATE
+	Popup::PressOk();
+	EXPECT_EQ(Popup::NumpadTag(), "RING GAUGE \xC3\x98");
+	Popup::NumpadKey('C');
+	for (char c : std::string("20"))
+	{
+		Popup::NumpadKey(c);
+	}
+	Popup::PressOk();
+	EXPECT_EQ(Popup::Title(), "CALIBRATE TIP");
+	Popup::PressOk();
+	EXPECT_EQ(last(), "M98 P\"0:/sys/probe/probe_tip.g\" D20.000 T2.000\n");
+	// The macro reports the effective tip diameter
+	message(M::Info, 5, "PROBE=TIP", "1.954");
+	EXPECT_EQ(page.tileText(P::PTip), "1.954");
+	EXPECT_EQ(Popup::Title(), "TIP \xC3\x98");
+	Popup::Close();
+	message(M::Info, 6, "PROBE=TIP", "abc");
+	EXPECT_EQ(Popup::Title(), "ALERT !");
 }

@@ -512,6 +512,15 @@ namespace UI::Cnc
 		setSignal(Signal::None);
 	}
 
+	void ProbeButton::setText(const std::string& text)
+	{
+		m_text = text;
+		if (m_obj != nullptr)
+		{
+			lv_obj_invalidate(m_obj);
+		}
+	}
+
 	void ProbeButton::setSignal(Signal signal)
 	{
 		m_signal = signal;
@@ -580,6 +589,13 @@ namespace UI::Cnc
 			this);
 	}
 
+	void ValueTile::setLabel(const std::string& label, bool dropdown)
+	{
+		m_label = label;
+		m_dropdown = dropdown;
+		lv_obj_invalidate(m_obj);
+	}
+
 	void ValueTile::setValue(const std::string& value)
 	{
 		m_value = value;
@@ -610,9 +626,12 @@ namespace UI::Cnc
 		}
 		else
 		{
-			const int32_t half = a.x1 + lv_area_get_width(&a) / 2;
-			const lv_area_t l = {a.x1 + px(10), a.y1, half, a.y2};
-			const lv_area_t v = {half, a.y1, valueRight, a.y2};
+			// The label may use the room the value leaves (CLEARANCE was cut at half the width)
+			lv_point_t vs;
+			lv_text_get_size(&vs, self->m_value.c_str(), Font::Small(), 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+			const int32_t split = std::min(a.x1 + lv_area_get_width(&a) / 2, valueRight - vs.x - px(12));
+			const lv_area_t l = {a.x1 + px(10), a.y1, valueRight - vs.x - px(12), a.y2};
+			const lv_area_t v = {split, a.y1, valueRight, a.y2};
 			DrawText(layer, l, self->m_label.c_str(), Font::Small(), Colour::Muted(), LV_TEXT_ALIGN_LEFT);
 			DrawText(layer, v, self->m_value.c_str(), Font::Small(), Colour::Text(), LV_TEXT_ALIGN_RIGHT);
 			mid = a.y1 + lv_area_get_height(&a) / 2;

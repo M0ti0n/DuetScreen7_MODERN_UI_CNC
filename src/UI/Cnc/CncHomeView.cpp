@@ -5,6 +5,7 @@
  */
 
 #include "CncHomeView.h"
+#include "CncNxt.h"
 #include "CncLayout.h"
 #include "CncMessages.h"
 #include "CncPanel.h"
@@ -47,6 +48,7 @@ namespace UI
 		m_queueTimer = lv_timer_create([](lv_timer_t*) { Cnc::State::RunQueued(); }, 20, nullptr);
 		Cnc::Panel::Load();	   // the accent colour, before anything is built
 		Cnc::Settings::Init(); // the machine settings (global.cnc*) from the object model
+		Cnc::Nxt::Init();	   // NeXT on the machine (global.nxt*)
 		Cnc::Messages::Init(); // display messages (M117)
 		m_root = getRootPtr();
 		lv_obj_remove_style_all(m_root); // the CNC UI does its own styling
@@ -545,6 +547,7 @@ namespace UI
 		m_wcsOffsets.create(m_content[PageWcs][0], ContentTop);
 		m_wcsTools.create(m_content[PageWcs][1], ContentTop);
 		m_wcsProbe.create(m_content[PageWcs][2], ContentTop);
+		m_nxtProbe.create(m_content[PageWcs][2], ContentTop, [this](bool nxt) { m_wcsProbe.setVisible(!nxt); });
 		m_jobList.create(m_content[PageJob][JobListTab], CompactContentTop);
 		m_jobPreview.create(m_content[PageJob][JobPreviewTab], CompactContentTop);
 		m_jobPreview.setListPath([this] { return m_jobList.selectedPath(); });

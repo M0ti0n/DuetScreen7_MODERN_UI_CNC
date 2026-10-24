@@ -18,6 +18,9 @@ target_sources(
   ${CMAKE_CURRENT_SOURCE_DIR}/CncJobListPage.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/CncJobStatusPage.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/CncMacrosPage.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncWifi.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncNxt.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/CncNxtProbePage.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/CncAlertsPage.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/CncConsolePage.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/CncSettings.cpp

@@ -18,6 +18,10 @@
  *  - SEARCH as on JOB LIST (shared keyboard, live filter on the macro names of the open folder,
  *    ENTER keeps the filter, X clears it); the view stays list or grid while typing (3 rows or
  *    2 tiles above the keyboard).
+ *  - SYS: the root of the macro folder starts with a "sys" row (tag SYSTEM) that opens 0:/sys/ (the
+ *    machine's system folder), ".." there goes back to the macros. config.g, config-override.g,
+ *    daemon.g and runonce.g are tagged CONFIG and are not run (they must not be run by hand); the
+ *    RUN question shows the full path of a system file.
  *  - SETTINGS > CUSTOM n > MACRO picks a macro here: the label reads SELECT (accent) and a tapped
  *    macro is handed over instead of run; leaving the page cancels it.
  */
@@ -74,7 +78,9 @@ namespace UI::Cnc
 		// State, for tests
 		static std::string DisplayName(const std::string& file);
 		const std::string& folder() const { return m_path; }	// relative to the macros folder
-		std::string fullDir() const;							// "0:/macros/sub/"
+		std::string fullDir() const;							// "0:/macros/sub/" ("0:/sys/sub/" in SYS)
+		bool inSystem() const { return m_sys; }					// browsing 0:/sys/
+		static bool ConfigFile(const std::string& name);		// config.g etc. in SYS: never run
 		bool gridMode() const { return m_grid; }
 		size_t scroll() const { return m_scroll; }
 		bool searching() const { return m_searching; }
@@ -89,7 +95,8 @@ namespace UI::Cnc
 		enum : int
 		{
 			ParentEntry = -1,
-			RootEntry = -2
+			RootEntry = -2,
+			SysEntry = -3		// "sys" row at the top of the macros root
 		};
 
 		void request();
@@ -106,6 +113,7 @@ namespace UI::Cnc
 		void keyboardGone(bool alignPage);
 		void cancelSearch();
 
+		bool m_sys = false;							// browsing the system folder instead of the macros
 		lv_obj_t* m_root = nullptr;
 		int32_t m_top = 0;
 		lv_timer_t* m_timer = nullptr;

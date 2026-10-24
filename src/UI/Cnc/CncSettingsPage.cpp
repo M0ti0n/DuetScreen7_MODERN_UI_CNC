@@ -5,6 +5,8 @@
  */
 
 #include "CncSettingsPage.h"
+#include "CncNxt.h"
+#include "CncWifi.h"
 #include "CncKeyboard.h"
 #include "CncPanel.h"
 #include "CncPopup.h"
@@ -37,7 +39,9 @@ namespace UI::Cnc
 																	  "CONNECTION",
 																	  "SPLIT OPERATIONS",
 																	  "PREVIEW IN JOB",
-																	  "ABOUT"};
+																	  "ABOUT",
+																	  "USB-C PORT",
+																	  "WIFI"};
 		const char* const MachineLabels[SettingsPage::NumMachineTiles] = {"PROBE MODE",
 																		  "TOOL HOLDER",
 																		  "REMEMBER TOOL",
@@ -171,6 +175,7 @@ namespace UI::Cnc
 					   "FACTORY RESET",
 					   Font::Small());
 		m_reset.setFilled(Colour::StopRed());
+		m_reset.setColours(Colour::StopGlyph(), Colour::StopRed()); // light text: dark text on #e60000 was hard to read
 		m_reset.setPressedLook(false);
 		m_reset.onPress([this] { factoryResetPressed(); });
 
@@ -558,6 +563,12 @@ namespace UI::Cnc
 						  (size_t)Panel::PreviewDuringJob(),
 						  [](size_t c) { Panel::SetPreviewDuringJob((Panel::PreviewInJob)c); });
 			break;
+		case PUsbPort:
+			Wifi::ChooseUsbPort();
+			break;
+		case PWifi:
+			Wifi::Open();
+			break;
 		case PAbout:
 		{
 			const char* const links[] = {"UART", "USB", "NETWORK"};
@@ -615,12 +626,15 @@ namespace UI::Cnc
 		switch (item)
 		{
 		case MProbeMode:
+			// NXT: MillenniumOS NeXT's own probing cycles (WCS > PROBE changes), only when NeXT is on the machine
 			Popup::Choose(
 				"PROBE MODE",
-				{"AUTO", "SEMI-AUTO", "MANUAL"},
+				{"AUTO", "SEMI-AUTO", "MANUAL", "NXT"},
 				v.probeMode,
 				[](size_t c)
-				{ Settings::Edit([c](Settings::Values& x) { x.probeMode = (uint8_t)c; }, Bit(Global::ProbeMode)); });
+				{ Settings::Edit([c](Settings::Values& x) { x.probeMode = (uint8_t)c; }, Bit(Global::ProbeMode)); },
+				2,
+				[](size_t c) { return c != 3 || Nxt::Detected(); });
 			break;
 		case MToolHolder:
 			Popup::Choose("TOOL HOLDER",

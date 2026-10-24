@@ -180,7 +180,8 @@ namespace UI::Cnc::Settings
 		// Push the values to the shared state the pages use
 		void apply()
 		{
-			State::SetProbeMode(static_cast<State::ProbeMode>(std::min<uint8_t>(s_values.probeMode, 2)));
+			// NXT (3): the standard page falls back to AUTO when NXT is not on the machine
+			State::SetProbeMode(static_cast<State::ProbeMode>(s_values.probeMode <= 2 ? s_values.probeMode : 0));
 			State::SetToolSetter(s_values.toolSetter);
 			State::SetJogFeed(s_values.jogFeed);
 			if (std::string(State::AuxLabel()) != (s_values.auxVacuum ? "VACUUM" : "COOLANT"))
@@ -595,7 +596,7 @@ namespace UI::Cnc::Settings
 		case Global::ProbeMode:
 		{
 			const int m = std::atoi(data.c_str());
-			if (m >= 0 && m <= 2)
+			if (m >= 0 && m <= 3) // 3: NXT (MillenniumOS NeXT probing cycles)
 			{
 				v.probeMode = (uint8_t)m;
 			}

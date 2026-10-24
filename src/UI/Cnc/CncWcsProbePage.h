@@ -82,6 +82,9 @@ namespace UI::Cnc
 		// Touches (also used by the tests)
 		void originPressed(size_t origin);
 		void paramPressed(Param p);
+		void calibrateTip();						// TIP Ã > CALIBRATE: ring gauge, probe_tip.g
+		void tipMeasured(const std::string& text);	// "PROBE=TIP" from the machine
+		void setVisible(bool visible);				// hidden while NXT probing is shown instead
 		void sidePressed();							// OUTSIDE | INSIDE (not for BORE, BOSS, Z TOP)
 		void runPressed();
 
@@ -143,6 +146,8 @@ namespace UI::Cnc
 		size_t m_modeTileCount[3] = {0, 0, 0};
 		SegmentToggle m_side;						// OUTSIDE | INSIDE, under the origins
 		ProbeButton m_run, m_start;					// PROBE (probe signal dot), START (MANUAL)
+		float m_ringGauge = 10.0f;					// CALIBRATE TIP: the last ring gauge diameter
+		bool refuseProbe(bool needsProbe);
 		bool m_userInside = false;					// the operator's side (default OUTSIDE)
 		std::string m_tileText[NumParams];
 

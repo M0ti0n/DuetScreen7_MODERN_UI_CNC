@@ -37,6 +37,8 @@ namespace UI::Cnc::Keyboard
 		bool s_lower = false, s_symbols = false;
 		bool s_upEnabled = false, s_downEnabled = false;
 		std::string s_text;
+		size_t s_cursor = 0;	// byte position of the caret (always the end unless the client edits)
+		size_t s_viewStart = 0; // first byte shown in the field (cursor mode)
 
 		// Widgets of the open sheet
 		lv_obj_t* s_textLabel = nullptr;
@@ -102,7 +104,77 @@ namespace UI::Cnc::Keyboard
 					++p; // whole UTF-8 characters
 				} while (p < s_text.size() && ((unsigned char)s_text[p] & 0xC0) == 0x80);
 			}
-			lv_label_set_text(s_textLabel, (s_text.substr(p) + "_").c_str());
+			if (s_client.secret)
+			{
+				size_t chars = 0;
+				for (char ch : s_text)
+				{
+					chars += (((unsigned char)ch & 0xC0) != 0x80) ? 1 : 0;
+				}
+				lv_label_set_text(s_textLabel, (std::string(std::min<size_t>(chars, 24), '*') + "_").c_str());
+				return;
+			}
+			if (!s_client.cursor)
+			{
+				lv_label_set_text(s_textLabel, (s_text.substr(p) + "_").c_str());
+				return;
+			}
+			// Cursor mode: show from where the caret stays in the field, the rest is clipped on the right
+			if (s_viewStart > s_cursor)
+			{
+				s_viewStart = s_cursor;
+			}
+			for (;;)
+			{
+				const std::string part = s_text.substr(s_viewStart, s_cursor - s_viewStart);
+				lv_text_get_size(&size, part.c_str(), Font::Small(), 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+				if (size.x <= avail || s_viewStart >= s_cursor)
+				{
+					break;
+				}
+				do
+				{
+					++s_viewStart;
+				} while (s_viewStart < s_cursor && ((unsigned char)s_text[s_viewStart] & 0xC0) == 0x80);
+			}
+			const std::string shown = s_text.substr(s_viewStart, s_cursor - s_viewStart) + "|" + s_text.substr(s_cursor);
+			lv_label_set_text(s_textLabel, shown.c_str());
+		}
+
+		// Cursor mode: a tap in the field at screen x puts the caret at the nearest character boundary
+		void placeCursorAt(int32_t x)
+		{
+			if (s_textLabel == nullptr)
+			{
+				return;
+			}
+			lv_area_t a;
+			lv_obj_get_coords(s_textLabel, &a);
+			const int32_t rel = x - a.x1;
+			size_t best = s_viewStart;
+			int32_t bestDist = rel < 0 ? -rel : rel;
+			for (size_t q = s_viewStart; q < s_text.size();)
+			{
+				do
+				{
+					++q;
+				} while (q < s_text.size() && ((unsigned char)s_text[q] & 0xC0) == 0x80);
+				// the caret takes room once it is passed: measure the text before q as shown
+				lv_point_t size;
+				const std::string part = s_text.substr(s_viewStart, q - s_viewStart);
+				lv_text_get_size(&size, part.c_str(), Font::Small(), 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+				const int32_t d = (size.x > rel) ? size.x - rel : rel - size.x;
+				if (d < bestDist)
+				{
+					bestDist = d;
+					best = q;
+				}
+				if (size.x > rel + 40)
+				{
+					break;
+				}
+			}
+			SetCursor(best);
 		}
 
 		void showKeys()
@@ -142,14 +214,15 @@ namespace UI::Cnc::Keyboard
 
 		size_t limit()
 		{
-			return std::min(s_client.maxLength, MaxText);
+			return s_client.maxLength; // MaxText unless the client allows more (file editor lines)
 		}
 
 		void typeChar(char c)
 		{
 			if (s_text.size() < limit())
 			{
-				s_text += c;
+				s_text.insert(s_cursor, 1, c);
+				++s_cursor;
 				changed();
 			}
 		}
@@ -254,6 +327,20 @@ namespace UI::Cnc::Keyboard
 			s_down->onPress([] { PressArrow(1); });
 			lv_obj_t* field = CreateBare(box, X(FieldX), Y(TopY), W(FieldX, FieldW), H(TopY, TopH));
 			StyleCard(field, Colour::Tile(), Colour::Border());
+			if (s_client.cursor)
+			{
+				lv_obj_add_flag(field, LV_OBJ_FLAG_CLICKABLE); // a tap places the caret
+				lv_obj_add_event_cb(
+					field,
+					[](lv_event_t*)
+					{
+						lv_point_t p;
+						lv_indev_get_point(lv_indev_active(), &p);
+						placeCursorAt(p.x);
+					},
+					LV_EVENT_PRESSED,
+					nullptr);
+			}
 			s_textLabel = CreateLabel(box,
 									  X(FieldX + FieldTextInset),
 									  Y(TopY),
@@ -339,6 +426,8 @@ namespace UI::Cnc::Keyboard
 		s_client = std::move(client);
 		s_owner = owner;
 		s_text = utf8Prefix(text, limit());
+		s_cursor = s_text.size();
+		s_viewStart = 0;
 		s_symbols = false;
 		s_lower = false;
 		s_upEnabled = s_downEnabled = false;
@@ -390,6 +479,28 @@ namespace UI::Cnc::Keyboard
 	void SetText(const std::string& text)
 	{
 		s_text = utf8Prefix(text, limit());
+		s_cursor = s_text.size();
+		s_viewStart = 0;
+		showText();
+	}
+
+	size_t Cursor()
+	{
+		return s_cursor;
+	}
+
+	void SetCursor(size_t pos)
+	{
+		if (!s_client.cursor)
+		{
+			return;
+		}
+		pos = std::min(pos, s_text.size());
+		while (pos > 0 && pos < s_text.size() && ((unsigned char)s_text[pos] & 0xC0) == 0x80)
+		{
+			--pos; // never inside a UTF-8 character
+		}
+		s_cursor = pos;
 		showText();
 	}
 
@@ -403,17 +514,16 @@ namespace UI::Cnc::Keyboard
 
 	void PressBackspace()
 	{
-		if (IsOpen() && !s_text.empty())
+		if (IsOpen() && s_cursor > 0)
 		{
-			// a whole UTF-8 character (a machine prompt's default text may have "°" or "é")
-			while (!s_text.empty() && ((unsigned char)s_text.back() & 0xC0) == 0x80)
+			// a whole UTF-8 character before the caret (a machine prompt's default text may have "°" or "é")
+			size_t start = s_cursor - 1;
+			while (start > 0 && ((unsigned char)s_text[start] & 0xC0) == 0x80)
 			{
-				s_text.pop_back();
+				--start;
 			}
-			if (!s_text.empty())
-			{
-				s_text.pop_back();
-			}
+			s_text.erase(start, s_cursor - start);
+			s_cursor = start;
 			changed();
 		}
 	}

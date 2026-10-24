@@ -87,6 +87,8 @@ namespace UI::Cnc::Messages
 		std::function<bool()> jogPromptOpen;
 		std::function<void()> closeJogPrompt;
 		std::function<void(const std::string& text)> autoError;
+		// "PROBE=TIP" info message (the tip calibration macro): the measured effective tip diameter
+		std::function<void(const std::string& text)> tipResult;
 	};
 	void SetProbeHooks(ProbeHooks hooks);
 	bool ProbePopupOpen();			// the auto probe or the jog prompt is in use

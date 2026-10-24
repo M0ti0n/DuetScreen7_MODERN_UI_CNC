@@ -25,6 +25,7 @@
 #include "CncMacrosPage.h"
 #include "CncSettingsPage.h"
 #include "CncWcsOffsetsPage.h"
+#include "CncNxtProbePage.h"
 #include "CncWcsProbePage.h"
 #include "CncWcsToolsPage.h"
 #include "UI/Components/Screen/Screen.h"
@@ -70,6 +71,7 @@ namespace UI
 		Cnc::WcsOffsetsPage& getWcsOffsetsPage() { return m_wcsOffsets; }
 		Cnc::WcsToolsPage& getWcsToolsPage() { return m_wcsTools; }
 		Cnc::WcsProbePage& getWcsProbePage() { return m_wcsProbe; }
+		Cnc::NxtProbePage& getNxtProbePage() { return m_nxtProbe; }
 		Cnc::JobListPage& getJobListPage() { return m_jobList; }
 		Cnc::JobStatusPage& getJobStatusPage() { return m_jobStatus; }
 		Cnc::JobPreviewPage& getJobPreviewPage() { return m_jobPreview; }
@@ -159,6 +161,7 @@ namespace UI
 		Cnc::WcsOffsetsPage m_wcsOffsets;
 		Cnc::WcsToolsPage m_wcsTools;
 		Cnc::WcsProbePage m_wcsProbe;
+		Cnc::NxtProbePage m_nxtProbe;			// WCS > PROBE with NeXT, instead of m_wcsProbe
 		Cnc::JobListPage m_jobList;
 		Cnc::JobPreviewPage m_jobPreview;
 		lv_timer_t* m_queueTimer = nullptr; // runs what the receive thread queued (State::RunOnUi)

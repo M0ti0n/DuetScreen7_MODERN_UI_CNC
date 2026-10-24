@@ -45,6 +45,10 @@ namespace UI::Cnc::Keyboard
 		std::string promptTitle, promptText;
 		bool cancelAllowed = true;
 		size_t maxLength = MaxText;							// keys do nothing once the text is this long
+		// Editing (file editor): a caret "|" in the text; a tap in the text field places it, keys insert
+		// and BACKSPACE deletes at it. Without it the text is only typed at the end.
+		bool cursor = false;
+		bool secret = false;								// passwords: each character shown as *
 	};
 
 	void Open(const std::string& text, Client client, int owner);
@@ -54,6 +58,8 @@ namespace UI::Cnc::Keyboard
 	void SetArrowsEnabled(bool up, bool down);
 	const std::string& Text();
 	void SetText(const std::string& text);			// replace the text (history, clear after sending)
+	size_t Cursor();								// byte position of the caret (the end without 'cursor')
+	void SetCursor(size_t pos);						// cursor mode: move the caret (whole UTF-8 characters)
 
 	// Tests
 	void PressKey(char c);							// a character key (the shown page must have it)

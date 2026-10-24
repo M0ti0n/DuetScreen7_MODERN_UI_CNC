@@ -49,6 +49,8 @@ namespace UI::Cnc
 			PSplitOps,
 			PPreviewInJob,
 			PAbout,
+			PUsbPort,	// the USB-C port: USB host or the built-in Wi-Fi
+			PWifi,		// the screen's Wi-Fi (CncWifi)
 			NumPanelTiles
 		};
 		enum MachineItem : unsigned int

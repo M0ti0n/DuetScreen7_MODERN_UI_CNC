@@ -173,7 +173,15 @@ namespace UI::Cnc
 
 	std::string MacrosPage::fullDir() const
 	{
-		return fmt::format("{}{}", OM::Directories::GetMacrosDirectory(), m_path);
+		return fmt::format(
+			"{}{}", m_sys ? OM::Directories::GetSystemDirectory() : OM::Directories::GetMacrosDirectory(), m_path);
+	}
+
+	bool MacrosPage::ConfigFile(const std::string& name)
+	{
+		std::string n = name;
+		std::transform(n.begin(), n.end(), n.begin(), [](unsigned char ch) { return (char)std::tolower(ch); });
+		return n == "config.g" || n == "config-override.g" || n == "daemon.g" || n == "runonce.g";
 	}
 
 	void MacrosPage::setShown(bool shown)
@@ -205,7 +213,7 @@ namespace UI::Cnc
 		std::weak_ptr<bool> alive = m_alive;
 		const std::string dir = fullDir();
 		OM::FileSystem::RequestFiles(
-			OM::Directories::DirectoryType::MACROS,
+			m_sys ? OM::Directories::DirectoryType::SYSTEM : OM::Directories::DirectoryType::MACROS,
 			m_path,
 			[this, alive, dir](OM::FileSystem::ItemList items)
 			{
@@ -302,9 +310,16 @@ namespace UI::Cnc
 			}
 			return;
 		}
-		if (!filterOn() && !m_path.empty())
+		if (!filterOn())
 		{
-			m_view.push_back(ParentEntry);
+			if (!m_path.empty() || m_sys)
+			{
+				m_view.push_back(ParentEntry); // in the root of SYS: back to the macros
+			}
+			else if (!m_searching)
+			{
+				m_view.push_back(SysEntry); // not while searching: the search is for the macros here
+			}
 		}
 		for (size_t i = 0; i < m_entries.size(); ++i)
 		{
@@ -396,9 +411,17 @@ namespace UI::Cnc
 				{
 					m_cells[i].setEntry("..", (e == ParentEntry) ? "UP" : "BACK");
 				}
+				else if (e == SysEntry)
+				{
+					m_cells[i].setEntry("sys", "SYSTEM");
+				}
 				else if (m_entries[(size_t)e].folder)
 				{
 					m_cells[i].setEntry(m_entries[(size_t)e].name, "FOLDER");
+				}
+				else if (m_sys && m_path.empty() && ConfigFile(m_entries[(size_t)e].name))
+				{
+					m_cells[i].setEntry(m_entries[(size_t)e].name, "CONFIG"); // the real name: config.g
 				}
 				else
 				{
@@ -427,7 +450,8 @@ namespace UI::Cnc
 		updateLabel();
 
 		// Message: loading, error, an empty folder, nothing matches
-		const bool onlyParent = (m_view.size() == 1 && m_view[0] == ParentEntry && !m_kbMode);
+		const bool onlyParent =
+			(m_view.size() == 1 && (m_view[0] == ParentEntry || m_view[0] == SysEntry) && !m_kbMode);
 		m_message.clear();
 		if (!m_loaded)
 		{
@@ -461,7 +485,17 @@ namespace UI::Cnc
 			return;
 		}
 		const int e = m_view[vi];
-		if (e == ParentEntry)
+		if (e == SysEntry)
+		{
+			m_sys = true;
+			openFolder("");
+		}
+		else if (e == ParentEntry && m_sys && m_path.empty())
+		{
+			m_sys = false; // root of SYS: back to the macros
+			openFolder("");
+		}
+		else if (e == ParentEntry)
 		{
 			std::string p = m_path;
 			if (!p.empty() && p.back() == '/')
@@ -473,6 +507,7 @@ namespace UI::Cnc
 		}
 		else if (e == RootEntry)
 		{
+			m_sys = false;
 			openFolder(""); // back to 0:/macros after a listing error
 		}
 		else if (m_entries[(size_t)e].folder)
@@ -486,6 +521,10 @@ namespace UI::Cnc
 			const std::string& file = m_entries[(size_t)e].name;
 			updateLabel();
 			h(fullDir() + file, DisplayName(file));
+		}
+		else if (m_sys && m_path.empty() && ConfigFile(m_entries[(size_t)e].name))
+		{
+			Popup::Refuse("Config files are not run from the screen."); // config.g etc.: never by hand
 		}
 		else
 		{
@@ -527,8 +566,13 @@ namespace UI::Cnc
 			return;
 		}
 		const std::string path = fullDir() + file;
+		std::vector<std::string> lines = {"Do you want to run this macro?", DisplayName(file)};
+		if (m_sys)
+		{
+			lines.push_back(path); // a system file: say where it is
+		}
 		Popup::Confirm("RUN MACRO",
-					   {"Do you want to run this macro?", DisplayName(file)},
+					   lines,
 					   [path, Locked]
 					   {
 						   if (State::MachineBusy())
