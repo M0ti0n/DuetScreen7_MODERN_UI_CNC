@@ -20,6 +20,7 @@ namespace UI::Cnc::Nxt
 		bool s_inited = false;
 		bool s_loaded = false, s_touchProbe = false, s_toolSetter = false, s_fourthAxis = false;
 		int s_probeTool = -1;
+		int s_touchProbeIndex = 0;		// global.nxtTouchProbeID: the K number of the touch probe
 		Values s_values;
 
 		const char* const CycleNames[NumCycles] = {"BORE",
@@ -73,6 +74,13 @@ namespace UI::Cnc::Nxt
 			return true;
 		}
 
+		bool onTouchProbeIndex(Comm::JsonDecoder*, const char* data, const size_t[])
+		{
+			const std::string v = data != nullptr ? data : "";
+			State::RunOnUi([v] { s_touchProbeIndex = std::max(0, std::atoi(v.c_str())); });
+			return true;
+		}
+
 		std::string num(float v)
 		{
 			return fmt::format("{:.3f}", v);
@@ -91,12 +99,14 @@ namespace UI::Cnc::Nxt
 		SubscriberMap::addSubscriber("global:nxtFeatureToolSetter", &onBool<&s_toolSetter>);
 		SubscriberMap::addSubscriber("global:nxtFeatureFourthAxis", &onBool<&s_fourthAxis>);
 		SubscriberMap::addSubscriber("global:nxtProbeToolID", &onProbeTool);
+		SubscriberMap::addSubscriber("global:nxtTouchProbeID", &onTouchProbeIndex);
 	}
 
 	void Reset()
 	{
 		s_loaded = s_touchProbe = s_toolSetter = s_fourthAxis = false;
 		s_probeTool = -1;
+		s_touchProbeIndex = 0;
 		s_values = Values();
 	}
 
@@ -113,6 +123,11 @@ namespace UI::Cnc::Nxt
 	int ProbeToolId()
 	{
 		return s_probeTool;
+	}
+
+	int UiProbeIndex()
+	{
+		return Active() ? s_touchProbeIndex : 0;
 	}
 
 	bool TouchProbe()
@@ -162,6 +177,10 @@ namespace UI::Cnc::Nxt
 		else if (name == "nxtProbeToolID")
 		{
 			s_probeTool = value.empty() ? -1 : std::atoi(value.c_str());
+		}
+		else if (name == "nxtTouchProbeID")
+		{
+			s_touchProbeIndex = std::max(0, std::atoi(value.c_str()));
 		}
 	}
 

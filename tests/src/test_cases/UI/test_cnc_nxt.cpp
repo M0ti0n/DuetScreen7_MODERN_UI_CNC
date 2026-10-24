@@ -249,3 +249,19 @@ TEST_F(TestCncNxt, Calibrate)
 	EXPECT_EQ(items[4].gcode, "M4910\n");
 	EXPECT_EQ(items[5].gcode, "M4807 W54\n");
 }
+
+TEST_F(TestCncNxt, SignalFollowsTheTouchProbe)
+{
+	makeView();
+	// K0 open (toolsetter), K1 triggered (NeXT's touch probe)
+	load_model_data(R"({"key":"sensors","flags":"v","result":{"probes":[{"value":[0]},{"value":[1000]}]}})");
+	Nxt::SetGlobal("nxtTouchProbeID", "1");
+	EXPECT_EQ(Nxt::UiProbeIndex(), 1);
+	view->showPage(UI::CncHomeView::PageControl);
+	Settings::Edit([](Settings::Values& x) { x.probeMode = 0; }, 0); // AUTO: K0
+	page().tick();
+	EXPECT_FALSE(State::ProbeClosed());
+	Settings::Edit([](Settings::Values& x) { x.probeMode = 3; }, 0); // NXT: K1
+	page().tick();
+	EXPECT_TRUE(State::ProbeClosed());
+}

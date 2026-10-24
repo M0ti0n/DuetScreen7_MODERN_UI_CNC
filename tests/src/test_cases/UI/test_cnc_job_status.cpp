@@ -12,6 +12,8 @@
 #include "UI/Cnc/CncHomeView.h"
 #include "UI/Cnc/CncLayout.h"
 #include "UI/Cnc/CncMessages.h"
+#include "UI/Cnc/CncNxt.h"
+#include "UI/Cnc/CncSettings.h"
 #include "UI/Cnc/CncPopup.h"
 #include "UI/Cnc/CncState.h"
 #include "test_utils/UiTestSuite.h"
@@ -483,4 +485,28 @@ TEST_F(TestCncJobStatus, ErrorDuringJob)
 	Messages::Response("Error: G1: target position outside machine limits", true);
 	EXPECT_EQ(Popup::Title(), "ALERT !");
 	EXPECT_EQ(text(), "Error: G1: target position outside machine limits");
+}
+
+TEST_F(TestCncJobStatus, NxtToolChangePrompts)
+{
+	makeView(V::PageControl);
+	startJob();
+	// Without NXT a title like "Install Tool" is an ordinary message
+	message(M::ConfirmCancel, 20, "Install Tool", "Please install Tool 3 and confirm when ready.");
+	EXPECT_FALSE(page().toolRowShown());
+	EXPECT_TRUE(Popup::IsOpen());
+	Popup::Close();
+
+	load_model_data(R"({"key":"global","flags":"v","result":{"cncProbeMode":3,"nxtLoaded":true}})");
+	lv_tick_inc(Settings::QuietTime + 10);
+	Settings::Tick();
+	ASSERT_TRUE(Nxt::Active());
+	message(M::ConfirmCancel, 21, "Remove Tool", "Please remove Tool 1 and confirm when complete.");
+	EXPECT_TRUE(page().toolRowShown());
+	EXPECT_EQ(page().toolRowText(), "Please remove Tool 1 and confirm when complete.");
+	page().toolOkPressed();
+	EXPECT_EQ(last(), "M292 P0 S21\n");
+	message(M::ConfirmCancel, 22, "Install Tool", "Please install Tool 3 and confirm when ready.");
+	EXPECT_TRUE(page().toolRowShown());
+	Nxt::Reset();
 }

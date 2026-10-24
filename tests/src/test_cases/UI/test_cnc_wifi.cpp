@@ -43,7 +43,7 @@ class TestCncWifi : public UiTestSuite
 		b.connect = [this](const std::string& ssid, const std::string* pw)
 		{
 			connects.push_back(ssid + (pw ? "/" + *pw : std::string()));
-			if (pw && *pw != "secret")
+			if (pw && *pw != "secret99")
 			{
 				return CR::AuthFailure;
 			}
@@ -154,19 +154,28 @@ TEST_F(TestCncWifi, ConnectWithPassword)
 		Keyboard::PressKey(c);
 	}
 	EXPECT_TRUE(lv_test_screenshot_compare("cnc/wifi_password.png")); // shown as *
-	Keyboard::PressEnter();
-	ASSERT_TRUE(Wifi::IsOpen()); // back to the list
-	EXPECT_EQ(connects.back(), "Guest/WRONG");
-	EXPECT_EQ(Wifi::Status(), "Wrong password for Guest");
-
-	Wifi::PressRow(2);
-	Keyboard::PressShift(); // lower case
-	for (char c : std::string("secret"))
+	Keyboard::PressEnter(); // 5 characters: too short for WPA2, not sent
+	EXPECT_TRUE(connects.empty());
+	EXPECT_EQ(Popup::Title(), "ALERT !");
+	Popup::PressOk(); // the keyboard again
+	ASSERT_TRUE(Keyboard::IsOpenFor(Wifi::KeyboardOwner));
+	for (char c : std::string("WRONGPASS"))
 	{
 		Keyboard::PressKey(c);
 	}
 	Keyboard::PressEnter();
-	EXPECT_EQ(connects.back(), "Guest/secret");
+	ASSERT_TRUE(Wifi::IsOpen()); // back to the list
+	EXPECT_EQ(connects.back(), "Guest/WRONGPASS");
+	EXPECT_EQ(Wifi::Status(), "Wrong password for Guest");
+
+	Wifi::PressRow(2);
+	Keyboard::PressShift(); // lower case
+	for (char c : std::string("secret99"))
+	{
+		Keyboard::PressKey(c);
+	}
+	Keyboard::PressEnter();
+	EXPECT_EQ(connects.back(), "Guest/secret99");
 	EXPECT_EQ(Wifi::Status(), "Connected to Guest");
 	EXPECT_EQ(Wifi::RowText(0), "Guest 3 CONNECTED");
 }
@@ -200,7 +209,17 @@ TEST_F(TestCncWifi, UsbPortSwitch)
 	EXPECT_EQ(Popup::Title(), "USB-C PORT");
 	Popup::PressChoice(1);
 	Popup::PressOk();
+	EXPECT_FALSE(internal); // asked first: the USB-C port drops what is connected to it
+	EXPECT_EQ(Popup::Lines().front(), "Turn the built-in WiFi on?");
+	EXPECT_TRUE(lv_test_screenshot_compare("cnc/wifi_usb_confirm.png"));
+	Popup::PressOk();
 	EXPECT_TRUE(internal);
 	EXPECT_EQ(Popup::Title(), "USB-C PORT"); // the USB-A note
 	Popup::Close();
+
+	// Not during a job: the machine's cable may be on the USB-C port
+	State::StatusChanged(OM::PrinterStatus::processing);
+	page().panelTilePressed(SP::PUsbPort);
+	EXPECT_EQ(Popup::Title(), "ALERT !");
+	EXPECT_TRUE(internal);
 }

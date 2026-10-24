@@ -328,6 +328,12 @@ namespace UI::Cnc::Wifi
 			client.maxLength = 63; // WPA2 pass phrase
 			client.enter = [ssid](const std::string& pw)
 			{
+				if (pw.size() < 8) // WPA2: 8 to 63 characters
+				{
+					// The check mark brings the keyboard back (empty: the password is not kept)
+					Popup::Message("ALERT !", "A WiFi password has\n8 to 63 characters.", false, [ssid] { askPassword(ssid); });
+					return;
+				}
 				Open();
 				connect(ssid, pw);
 			};
@@ -365,6 +371,11 @@ namespace UI::Cnc::Wifi
 
 	void ChooseUsbPort()
 	{
+		if (State::JobActive())
+		{
+			Popup::Refuse("Locked while a job is running or paused.");
+			return;
+		}
 		Popup::Choose("USB-C PORT",
 					  {"HOST", "INTERNAL WIFI"},
 					  InternalWifi() ? 1 : 0,
@@ -375,10 +386,25 @@ namespace UI::Cnc::Wifi
 						  {
 							  return;
 						  }
-						  backend().setInternalWifi(internal);
-						  Popup::Info("USB-C PORT",
-									  internal ? "Built-in WiFi on. A USB cable to the machine\nmust now use the USB-A port."
-											   : "Built-in WiFi off. The USB-C port is\na USB host again.");
+						  // Whatever is on the USB-C port loses its connection at once (the machine too, if
+						  // its cable is there): asked first
+						  Popup::Confirm("USB-C PORT",
+										 {internal ? "Turn the built-in WiFi on?" : "Turn the built-in WiFi off?",
+										  "The USB-C port drops what is",
+										  "connected to it. A machine cable",
+										  internal ? "must be on the USB-A port." : "on USB-C works again after."},
+										 [internal]
+										 {
+											 if (State::JobActive())
+											 {
+												 Popup::Refuse("Locked while a job is running or paused.");
+												 return;
+											 }
+											 backend().setInternalWifi(internal);
+											 Popup::Info("USB-C PORT",
+														 internal ? "Built-in WiFi on. A USB cable to the machine\nmust now use the USB-A port."
+																  : "Built-in WiFi off. The USB-C port is\na USB host again.");
+										 });
 					  });
 	}
 

@@ -10,6 +10,8 @@
 #include "Debug.h"
 #include "UI/Cnc/CncHomeView.h"
 #include "UI/Cnc/CncLayout.h"
+#include "UI/Cnc/CncNxt.h"
+#include "UI/Cnc/CncSettings.h"
 #include "UI/Cnc/CncPopup.h"
 #include "UI/Cnc/CncState.h"
 #include "test_utils/UiTestSuite.h"
@@ -32,7 +34,20 @@ class TestCncWcsTools : public UiTestSuite
 		State::SetSendHook([this](std::string_view g) { sent.emplace_back(g); });
 	}
 
-	~TestCncWcsTools() override { Popup::Close(); }
+	~TestCncWcsTools() override
+	{
+		Popup::Close();
+		Nxt::Reset();
+	}
+
+	// PROBE MODE = NXT with NeXT on the machine (touch probe T49, toolsetter on)
+	static void nxtOn()
+	{
+		load_model_data(
+			R"({"key":"global","flags":"v","result":{"cncProbeMode":3,"nxtLoaded":true,"nxtProbeToolID":49,"nxtFeatureToolSetter":true}})");
+		lv_tick_inc(Settings::QuietTime + 10);
+		Settings::Tick();
+	}
 
 	// The frame on WCS > TOOLS with machine data, idle
 	std::unique_ptr<UI::CncHomeView> makeView()
@@ -234,4 +249,58 @@ TEST_F(TestCncWcsTools, LockedDuringJob)
 	EXPECT_EQ(page.selectedTool(), 0);
 	EXPECT_EQ(text(), locked);
 	EXPECT_TRUE(sent.empty());
+}
+
+// ---- 56 tools, PROBE MODE = NXT ------------------------------------------------------------------
+
+TEST_F(TestCncWcsTools, FiftySixToolsListed)
+{
+	std::vector<State::ToolEntry> tools;
+	for (int i = 0; i < 60; ++i)
+	{
+		State::ToolEntry t;
+		t.number = i;
+		t.z = 0.0f;
+		tools.push_back(t);
+	}
+	State::SetTools(tools);
+	ASSERT_EQ(State::Tools().size(), 56u);
+	EXPECT_EQ(State::Tools().back().number, 55);
+}
+
+TEST_F(TestCncWcsTools, NxtLoadIsAlwaysTheToolChange)
+{
+	auto view = makeView();
+	nxtOn();
+	ASSERT_TRUE(Nxt::Active());
+	auto& page = view->getWcsToolsPage();
+	State::SetActiveTool(-1); // T-: no "IS T3 IN THE SPINDLE?" (T3 P0 would skip NeXT's macros)
+	page.rowPressed(3);
+	page.loadPressed();
+	EXPECT_FALSE(Popup::IsFormOpen());
+	EXPECT_EQ(Popup::Title(), "LOAD T3");
+	EXPECT_EQ(Popup::Lines().front(), "Load T3?");
+	Popup::PressOk();
+	EXPECT_EQ(sent, Lines({"T3\n"}));
+}
+
+TEST_F(TestCncWcsTools, NxtMeasureSendsG37)
+{
+	auto view = makeView();
+	nxtOn();
+	auto& page = view->getWcsToolsPage();
+	State::SetToolSetter(false); // SETTINGS > TOOL SETTER does not matter: NeXT's toolsetter does
+	page.measurePressed();
+	EXPECT_EQ(Popup::Title(), "MEASURE T1");
+	Popup::PressOk();
+	EXPECT_EQ(last(), "G37\n");
+
+	Nxt::SetGlobal("nxtFeatureToolSetter", "false");
+	page.measurePressed();
+	EXPECT_EQ(Popup::Lines(), Lines({"No tool setter.", "The toolsetter is off in NXT."}));
+	Popup::Close();
+	Nxt::SetGlobal("nxtFeatureToolSetter", "true");
+	Nxt::SetGlobal("nxtProbeToolID", "1"); // T1 is the touch probe
+	page.measurePressed();
+	EXPECT_EQ(Popup::Lines(), Lines({"The touch probe is not", "measured on the tool setter."}));
 }

@@ -5,6 +5,7 @@
  */
 
 #include "CncWcsToolsPage.h"
+#include "CncNxt.h"
 #include "CncPopup.h"
 #include "CncState.h"
 #include "CncTheme.h"
@@ -324,6 +325,32 @@ namespace UI::Cnc
 		}
 		const std::string title = fmt::format("LOAD T{:d}", tool);
 
+		if (!isTool(active) && Nxt::Active())
+		{
+			// NXT: always the real tool change, so NeXT's tpre / tpost measure the tool and set its offset
+			// (T# P0 would skip them)
+			std::vector<std::string> nl = {fmt::format("Load T{:d}?", tool)};
+			const std::string& nname = State::FindTool(tool)->name;
+			if (!nname.empty())
+			{
+				nl.push_back(nname);
+			}
+			nl.push_back("NXT asks you to install it");
+			nl.push_back("and measures it.");
+			Popup::Confirm(title,
+						   nl,
+						   [tool]
+						   {
+							   if (State::JobActive() || !isTool(tool) || isTool(State::ActiveTool()))
+							   {
+								   Popup::Refuse(State::JobActive() ? LockedJob : ListChanged);
+								   return;
+							   }
+							   State::Send(fmt::format("T{:d}\n", tool));
+						   });
+			return;
+		}
+
 		if (!isTool(active))
 		{
 			// No tool in the spindle (T-): is the selected one already in?
@@ -393,9 +420,15 @@ namespace UI::Cnc
 			Popup::Refuse("No tool is loaded.\nLOAD a tool first.");
 			return;
 		}
-		if (!State::ToolSetter())
+		const bool nxt = Nxt::Active();
+		if (nxt ? !Nxt::ToolSetter() : !State::ToolSetter())
 		{
-			Popup::Refuse("No tool setter.\nTOOL SETTER is off in SETTINGS.");
+			Popup::Refuse(nxt ? "No tool setter.\nThe toolsetter is off in NXT." : "No tool setter.\nTOOL SETTER is off in SETTINGS.");
+			return;
+		}
+		if (nxt && active == Nxt::ProbeToolId())
+		{
+			Popup::Refuse("The touch probe is not\nmeasured on the tool setter.");
 			return;
 		}
 		if (m_selected != active)
@@ -405,14 +438,16 @@ namespace UI::Cnc
 		}
 		Popup::Confirm(fmt::format("MEASURE T{:d}", active),
 					   {fmt::format("Measure T{:d} length", active), "on the tool setter?"},
-					   [active]
+					   [active, nxt]
 					   {
 						   if (State::JobActive() || State::ActiveTool() != active)
 						   {
 							   Popup::Refuse(State::JobActive() ? LockedJob : "The loaded tool changed. Try again.");
 							   return;
 						   }
-						   State::Send(fmt::format("M98 P\"0:/sys/toolchange/measure_tool.g\" K{:d}\n", active));
+						   // NXT: its own tool length probe (G37); otherwise the screen's measure macro
+						   State::Send(nxt ? std::string("G37\n")
+										   : fmt::format("M98 P\"0:/sys/toolchange/measure_tool.g\" K{:d}\n", active));
 					   });
 	}
 

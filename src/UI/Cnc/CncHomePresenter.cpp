@@ -5,6 +5,7 @@
 #include "CncHomePresenter.h"
 #include "CncHomeView.h"
 #include "CncMessages.h"
+#include "CncNxt.h"
 #include "CncPreviewSource.h"
 #include "CncState.h"
 #include "Debug.h"
@@ -294,12 +295,12 @@ namespace UI
 								m_view->getPage() == CncHomeView::PageSystem);
 	}
 
-	// Probe 0 (WCS > PROBE: OPEN / CLOSED)
+	// The probe of WCS > PROBE (OPEN / CLOSED): K0, or NeXT's touch probe in NXT mode
 	void CncHomePresenter::newProbeData()
 	{
 		ZoneScoped;
 		int32_t value = 0;
-		if (OM::GetProbeValue(0, value))
+		if (OM::GetProbeValue((size_t)Cnc::Nxt::UiProbeIndex(), value))
 		{
 			Cnc::State::SetProbeValue(value);
 		}

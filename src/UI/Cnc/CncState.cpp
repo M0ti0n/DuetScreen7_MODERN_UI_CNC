@@ -417,7 +417,7 @@ namespace UI::Cnc::State
 		{
 			if (t.number >= 0 && t.number <= MaxToolNumber && list.size() < MaxTools)
 			{
-				list.push_back(std::move(t)); // higher numbers or a 33rd tool are not listed (PanelDue)
+				list.push_back(std::move(t)); // higher numbers or a 57th tool are not listed
 			}
 		}
 		std::sort(list.begin(), list.end(), [](const ToolEntry& a, const ToolEntry& b) { return a.number < b.number; });

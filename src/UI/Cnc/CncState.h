@@ -77,7 +77,7 @@ namespace UI::Cnc::State
 		std::string name;
 		float z;										// Z offset
 	};
-	constexpr size_t MaxTools = 32;
+	constexpr size_t MaxTools = 56;
 	constexpr int MaxToolNumber = 99;
 	void SetTools(std::vector<ToolEntry> tools);		// sorted and limited here
 	const std::vector<ToolEntry>& Tools();

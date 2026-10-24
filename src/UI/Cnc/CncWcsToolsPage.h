@@ -11,7 +11,7 @@
  *   [   LOAD   ] [  MEASURE  ] [  SET Z  ]
  *
  * Same behaviour as on PanelDue:
- *  - The list is whatever RRF has defined (M563); up to 32 tools, T0..T99. The loaded (active) tool
+ *  - The list is whatever RRF has defined (M563); up to 56 tools, T0..T99. The loaded (active) tool
  *    has an accent-filled T# tile, the selected row an accent outline on all three tiles. The
  *    arrows page through the list 4 rows at a time.
  *  - T# or the name selects the row; the Z OFFSET tile selects it and opens SET Z. A tool change
@@ -22,6 +22,9 @@
  *  - MEASURE  the loaded tool on the tool setter: M98 P"0:/sys/toolchange/measure_tool.g" K#,
  *           confirmed; needs TOOL SETTER on in SETTINGS.
  *  - SET Z  numpad for the selected tool's Z offset: G10 P# Z..., then M500 P10.
+ *  - PROBE MODE = NXT: LOAD is always the real tool change (no "IS T# IN THE SPINDLE?": NeXT's
+ *           tpre / tpost ask for the tool and measure it), MEASURE sends G37 (NeXT's toolsetter on;
+ *           not for the touch probe).
  *  - LOAD and MEASURE need X, Y and Z homed; all three are refused while a job runs or is paused.
  */
 #pragma once

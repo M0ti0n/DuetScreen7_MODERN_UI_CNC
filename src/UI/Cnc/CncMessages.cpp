@@ -5,6 +5,7 @@
 #include "CncMessages.h"
 #include "CncKeyboard.h"
 #include "CncPanel.h"
+#include "CncNxt.h"
 #include "CncPopup.h"
 #include "CncState.h"
 #include "Subscribers/Subscribers.h"
@@ -220,9 +221,12 @@ namespace UI::Cnc::Messages
 		{
 			const uint32_t seq = msg.seq;
 			const std::string title = msg.title.empty() ? std::string("MESSAGE") : msg.title;
-			// Tool change prompt during a job (title starts with TOOL, no jog controls): inline on JOB STATUS
-			if ((msg.mode == Mode::InfoConfirm || msg.mode == Mode::ConfirmCancel) && msg.controls == 0 &&
-				title.rfind("TOOL", 0) == 0 && s_jobHooks.showToolPrompt && s_jobHooks.showToolPrompt(msg.text, seq))
+			// Tool change prompt during a job (title starts with TOOL, no jog controls): inline on JOB STATUS.
+			// NXT's tool change macros ask with "Install Tool" / "Remove Tool" (and the touch probe's name)
+			const bool toolTitle = title.rfind("TOOL", 0) == 0 ||
+								   (Nxt::Active() && (title.rfind("Install ", 0) == 0 || title.rfind("Remove ", 0) == 0));
+			if ((msg.mode == Mode::InfoConfirm || msg.mode == Mode::ConfirmCancel) && msg.controls == 0 && toolTitle &&
+				s_jobHooks.showToolPrompt && s_jobHooks.showToolPrompt(msg.text, seq))
 			{
 				Popup::CloseResponse(); // a reply popup must not hide the prompt's OK
 				return;

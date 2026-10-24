@@ -6,7 +6,7 @@
  * G-code; NeXT does the probing, asks its own questions (M291) and writes the work offset.
  *
  * Detection: global.nxtLoaded is true once NeXT has booted. Also read: nxtProbeToolID (the touch probe's
- * tool, which every cycle needs selected), nxtFeatureTouchProbe, nxtFeatureToolSetter,
+ * tool, which every cycle needs selected), nxtTouchProbeID (its K number, for the open / triggered signal), nxtFeatureTouchProbe, nxtFeatureToolSetter,
  * nxtFeatureFourthAxis (the MOS Fourth Axis macros M4910 / M4912 / M4807 for the rotary).
  *
  * SETTINGS > PROBE MODE: NXT (cncProbeMode = 3) can only be chosen when NeXT is detected. WCS > PROBE
@@ -29,6 +29,7 @@ namespace UI::Cnc::Nxt
 	bool Detected();									// global.nxtLoaded
 	bool Active();										// detected and PROBE MODE = NXT
 	int ProbeToolId();									// -1: not known
+	int UiProbeIndex();									// the probe the PROBE signal shows: NeXT's touch probe (nxtTouchProbeID) when active, else K0
 	bool TouchProbe();
 	bool ToolSetter();
 	bool FourthAxis();									// the rotary macros are installed (and an A axis is visible)

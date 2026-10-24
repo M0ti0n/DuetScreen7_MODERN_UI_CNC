@@ -9,6 +9,7 @@
 #include "CncState.h"
 #include "CncTheme.h"
 #include "Debug.h"
+#include "ObjectModel/Sensor.h"
 #include "UI/Components/LVGL/LvObj.h"
 #include <fmt/format.h>
 #include <memory>
@@ -129,6 +130,15 @@ namespace UI::Cnc
 	void NxtProbePage::tick()
 	{
 		const bool active = Nxt::Active();
+		if (active != m_active)
+		{
+			// The signal follows NeXT's touch probe (its K number) while NXT is shown, K0 otherwise
+			int32_t value = 0;
+			if (OM::GetProbeValue((size_t)Nxt::UiProbeIndex(), value))
+			{
+				State::SetProbeValue(value);
+			}
+		}
 		if (active == m_active)
 		{
 			return;
