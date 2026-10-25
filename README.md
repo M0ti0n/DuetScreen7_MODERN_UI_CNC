@@ -16,6 +16,15 @@ plus a few additions that a bigger screen with more memory makes possible: a 3D 
 
 The CNC UI replaces the printer UI when the project is built with `DUETSCREEN_CNC_UI=ON`. Everything below the UI (communication, object model, Wi-Fi, updates) is stock DuetScreen.
 
+## What's new in rc4
+
+- **NXT probing mode** — with [MillenniumOS NeXT](https://github.com/MillenniumMachines/mos-nxt) on the machine, SETTINGS → PROBE MODE → **NXT** turns WCS → PROBE into NeXT's probing cycles (bore, boss, rectangle pocket / block, web, pocket, outside / inside corner, surface, vise corner, rotation) and its **CALIBRATE** menu. See [PROBE MODE = NXT](#probe-mode--nxt).
+- **TOOLS in NXT mode** — LOAD always runs NeXT's tool change, MEASURE sends `G37`, NeXT's tool change prompts show on JOB STATUS during a job. The tool list now holds up to **56 tools**.
+- **TIP Ø → CALIBRATE** — measures the effective probe tip diameter in a ring gauge (needs a `probe_tip.g` macro, see [Setting up the machine](#setting-up-the-machine)).
+- **WIFI page and USB-C PORT** in SETTINGS — scan, connect with a password, forget networks; switch the USB-C port between HOST and the built-in Wi-Fi. See [WIFI and USB-C PORT](#wifi-and-usb-c-port).
+- **MACROS → sys** — the system folder `0:/sys/` can be opened from MACROS. Config files are shown but never run.
+- Fixes: SEMI-AUTO CLEARANCE label, FACTORY RESET text, popup-style X buttons.
+
 ## Table of Contents
 
 - [Navigation](#navigation)
@@ -24,6 +33,7 @@ The CNC UI replaces the printer UI when the project is built with `DUETSCREEN_CN
   - [WCS → OFFSETS](#wcs--offsets)
   - [WCS → TOOLS](#wcs--tools)
   - [WCS → PROBE](#wcs--probe)
+  - [PROBE MODE = NXT](#probe-mode--nxt)
 - [JOB](#job)
   - [JOB → JOB LIST](#job--job-list)
   - [JOB → PREVIEW](#job--preview)
@@ -33,6 +43,7 @@ The CNC UI replaces the printer UI when the project is built with `DUETSCREEN_CN
   - [SYSTEM → ALERT](#system--alert)
   - [SYSTEM → CONSOLE](#system--console)
   - [SYSTEM → SETTINGS → SYSTEM](#system--settings--system)
+  - [WIFI and USB-C PORT](#wifi-and-usb-c-port)
   - [SYSTEM → SETTINGS → CUSTOMIZATION](#system--settings--customization)
   - [SYSTEM → SETTINGS → JOG DIRECTION](#system--settings--jog-direction)
 - [Messages and popups from the machine](#messages-and-popups-from-the-machine)
@@ -157,7 +168,7 @@ Only the **job's own work system** is locked (editing, RESET, SHIFT, COPY TO int
 
 ## WCS → TOOLS
 
-The tool table of the machine: whatever the machine defines with `M563` (up to 32 tools, T0 to T99).
+The tool table of the machine: whatever the machine defines with `M563` (up to 56 tools, T0 to T99).
 
 ![WCS TOOLS](docs/images/wcs_tools.png)
 
@@ -173,6 +184,12 @@ The tool table of the machine: whatever the machine defines with `M563` (up to 3
 - **SET Z** — a numpad for the Z offset of the selected tool (`G10 P# Z...`, then `M500 P10`).
 
 LOAD and MEASURE need X, Y and Z homed. All of TOOLS is refused while a job runs or is paused.
+
+**With PROBE MODE = NXT** (NeXT does the tool handling in its `tfree.g` / `tpre.g` / `tpost.g`):
+
+- **LOAD** always runs the real tool change (`T#`), also when no tool is known: NeXT asks you to install the tool and measures it. The "Is T# in the spindle?" shortcut is not used, because it would skip NeXT's macros.
+- **MEASURE** sends `G37` (NeXT's tool length probe). It needs NeXT's toolsetter feature, not SETTINGS → TOOL SETTER, and it refuses the touch probe.
+- During a job, NeXT's *Install …* / *Remove …* prompts show in the JOB STATUS tool change row.
 
 ## WCS → PROBE
 
@@ -195,7 +212,7 @@ Finds the work zero with a touch probe, through your own probe macros.
 
 Typed on the numpad and kept on the machine. Each mode shows its own:
 
-- **TIP Ø** — probe tip diameter.
+- **TIP Ø** — probe tip diameter. A tap offers **ENTER VALUE** or **CALIBRATE**: CALIBRATE asks for the ring gauge diameter and runs `0:/sys/probe/probe_tip.g` in it (see [Setting up the machine](#setting-up-the-machine)).
 - **CLEAR D** — clearance distance.
 - **SEARCH** — search distance.
 - **Z DEPTH** — how deep to go for side probing.
@@ -214,6 +231,37 @@ The pictures show, from left: AUTO with OUTSIDE, INSIDE selected, the AUTO progr
 
 SEMI-AUTO and MANUAL ask through jog prompts: *"Move near [side] side of stock, press PROBE"* and *"Touch [side] side of stock and press READ"*, with the axis buttons in the popup.
 **OK** continues, **X** cancels. Probing is refused during a job, when the machine is not idle or not homed, and (AUTO / SEMI-AUTO) when the probe is already closed.
+
+## PROBE MODE = NXT
+
+For machines running [MillenniumOS NeXT](https://github.com/MillenniumMachines/mos-nxt) (written for NeXT v0.6). **NXT** can only be chosen in SETTINGS → PROBE MODE when the screen sees NeXT on the machine (`global.nxtLoaded`); otherwise it is greyed and the screen uses AUTO. The screen only builds the G-code: NeXT does the probing, asks its own questions and writes the work offset.
+
+![WCS PROBE with NXT](docs/images/wcs_probe_nxt.png)
+
+The pictures show, from left: the cycle grid, BORE with its parameters, OUT CORNER.
+
+### Step 1: the cycle
+
+**BORE**, **BOSS**, **RECT POCKET**, **RECT BLOCK**, **WEB**, **POCKET**, **OUT CORNER**, **IN CORNER**, **SURFACE**, **VISE CORNER**, **ROTATION** — a tap opens its parameters. **CALIBRATE** opens NeXT's calibration (below).
+
+### Step 2: parameters and RUN
+
+Each cycle shows only its own parameters, for example DIAMETER, WIDTH X / HEIGHT Y, DEPTH, CLEARANCE, OVERTRAVEL, SAMPLES (AUTO = NeXT's default), CORNER, TO CORNER, AXIS and DISTANCE (SURFACE).
+
+- **SAVE TO** — **G54 … G58**. NeXT keeps 5 result rows, so these are the work offsets its cycles can write.
+- **ROTATION** (bore, boss, rectangles, rotation) — what NeXT does with the measured skew: **ASK**, **APPLY** (G68) or **SKIP**.
+- **< BACK** — back to the grid.
+- **RUN <cycle>** — sends the cycle, for example `G6500 U1 D25.000 L5.000 O2.000 Q0`. Corners and SURFACE start with `M5000` and aim relative to the current position.
+
+RUN is refused during a job, when the machine is not idle or not homed, when NeXT's touch probe is triggered (the RUN button shows its state, from `global.nxtTouchProbeID`), and while the touch probe tool (`T{global.nxtProbeToolID}`, usually T49) is not loaded.
+
+**Corners:** start above the outside (or inside) of the chosen corner. **TO CORNER** is how far the probe travels toward each face, so start within that distance of both faces.
+
+### CALIBRATE
+
+- **DATUM SETUP** — `M5016`, the toolsetter / probe reference.
+- **PROBE REPEAT**, **SETTER REPEAT** — `M6523`, 10 probes with min / max / range (only when that feature is on in NeXT).
+- **ROTARY FLAT**, **ROTARY CENTRE**, **ROTARY Y0** — `M4912`, `M4910`, `M4807`: only with the MOS Fourth Axis macros and a visible A axis.
 
 ---
 
@@ -345,6 +393,12 @@ The macros on the machine (`0:/macros`), as a **list** (11 rows) or a **grid** (
 
 ![MACROS](docs/images/macros.png)
 
+### System folder (sys)
+
+The first row of the macro root, **sys** (tagged SYSTEM), opens the machine's system folder `0:/sys/`. `..` at its root goes back to the macros. The RUN question shows the full path of a system file. **config.g**, **config-override.g**, **daemon.g** and **runonce.g** are tagged **CONFIG** and are never run from the screen.
+
+![MACROS sys folder](docs/images/macros_sys.png)
+
 ### MACROS / SEARCH
 
 - **SEARCH** — keyboard with a live filter on the macro names of the open folder. **ENTER** keeps the filter, **X** clears it.
@@ -413,7 +467,25 @@ Three pages (arrows at the bottom). A tile opens a popup with the choices; most 
 - **SPLIT OPERATIONS** — PREVIEW: **AUTO** (operations from names, or guessed when a tool is used twice) or **TOOL CHANGES** (only split at tool changes).
 - **PREVIEW IN JOB** — **ANY FILE**, **RUNNING JOB** or **OFF**: what PREVIEW may show and download while a job runs. OFF avoids downloads during a job (useful on a slow Duet 2 WiFi).
 - **ABOUT** — version and connection.
+- **USB-C PORT** — **HOST** or **INTERNAL WIFI**, see [WIFI and USB-C PORT](#wifi-and-usb-c-port).
+- **WIFI** — the WIFI page, see below.
 - **FACTORY RESET** — choose **SCREEN**, **MACHINE** or **BOTH**. Asks first. SCREEN returns the screen settings, MACHINE the CNC settings stored on the machine.
+
+## WIFI and USB-C PORT
+
+The built-in Wi-Fi of the DuetScreen shares the **USB-C** port. To use Wi-Fi, set **USB-C PORT → INTERNAL WIFI**; a USB cable to the machine then goes into the **USB-A** port.
+
+![WIFI](docs/images/settings_wifi.png)
+
+The pictures show, from left: the WIFI page, the password keyboard, the USB-C PORT question.
+
+- **USB-C PORT** — asks first, because the port drops whatever is connected to it at once (also the machine, if its cable is there). Locked while a job runs or is paused.
+- **WIFI** — the screen's IP address, **SCAN**, and the networks in two-line tiles: name, then **CONNECTED** or **SAVED**, signal bars on the right. 4 networks per page (up / down arrows).
+  - A new network asks for the password on the keyboard (shown as `*`, 8 to 63 characters).
+  - A saved network: **CONNECT** / **FORGET**. The connected one: **DISCONNECT** / **FORGET**.
+  - With USB-C PORT on HOST the page says *"Built-in WiFi is off: SETTINGS > USB-C PORT"*.
+
+**Power:** in INTERNAL WIFI mode the machine's cable is on USB-A, which gives power but does not receive it, so the screen needs its own 5 V supply (5 V connector). Duet and BTT boards do not power the screen over USB anyway; boards that power it over USB-C (for example Fly) lose that in this mode.
 
 ## SYSTEM → SETTINGS → CUSTOMIZATION
 
@@ -465,7 +537,9 @@ The machine can talk to the screen, and the UI shows it the same way everywhere:
 
 - **Test phase.** The UI is tested in the simulator against a fake Duet (`scripts/fake_duet.py`) and by automated tests. It has **not yet been run on a real DuetScreen with a real machine**. Check every new function without a tool and without stock first.
 - **Rotary dial.** The hardware dial of the PanelDue version is not implemented (not tested on PanelDue either).
-- **Connection.** USB is recommended by Duet3D for commands. The network is used only to download the job file for PREVIEW.
+- **Connection.** USB is recommended by Duet3D for commands. The network is used only to download the job file for PREVIEW: the machine needs a network address the screen can reach (screen Wi-Fi with USB-C PORT = INTERNAL WIFI, a USB to Ethernet adapter on USB-A, or CONNECTION = NETWORK). Over USB alone PREVIEW says it needs a network connection.
+- **No macro editing on the screen (yet).** RRF's only way to read a file over USB / UART (`M36.2`) does not escape quotes, so lines such as `M98 P"..."` break the reply. Editing comes back when RRF offers a proper download.
+- **PanelDue and NXT.** PanelDue CNC knows probe modes 0–2 only. Changing a setting on a PanelDue writes the settings file without NXT, and the DuetScreen follows it.
 - **Duet 2 WiFi.** Downloads during a job can be slow. Use SETTINGS → PREVIEW IN JOB → OFF if the job is sensitive to it.
 - **Preview is a guide.** The simulated part is made from the G-code only. It does not know your fixtures or clamps, and it is not a substitute for a dry run.
 
@@ -481,10 +555,12 @@ The CNC UI uses a few normal RRF files on the machine.
    - `0:/macros/goto_xy0.g` — CONTROL → XY0
    - `0:/macros/aux_on.g`, `0:/macros/aux_off.g` — CONTROL → COOLANT / VACUUM
    - `0:/sys/probe/probe_auto.g`, `probe_semi.g`, `probe_manual.g` — WCS → PROBE
-   - `0:/sys/toolchange/measure_tool.g` — WCS → TOOLS → MEASURE
+   - `0:/sys/toolchange/measure_tool.g` — WCS → TOOLS → MEASURE (not used in NXT mode: `G37`)
+   - `0:/sys/probe/probe_tip.g` — WCS → PROBE → TIP Ø → CALIBRATE. Called as `M98 P"0:/sys/probe/probe_tip.g" D<ring gauge Ø> T<current tip Ø>` with the probe in the ring gauge; it must answer with `M291 S1 R"PROBE=TIP" P"<measured Ø>"`, which sets TIP Ø.
 3. **Probe and tools.** Define the probe in `config.g`. The tool table is whatever you define with `M563`.
-4. **G-code for the preview.** See [What the G-code can contain](#what-the-g-code-can-contain).
-5. **Connection.** USB for commands plus the network for the preview download, or NETWORK only, or UART.
+4. **NXT (optional).** Install [MillenniumOS NeXT](https://github.com/MillenniumMachines/mos-nxt) and choose SETTINGS → PROBE MODE → NXT. NeXT's own probe macros and tool change macros are used; the `probe_*.g` and `measure_tool.g` macros above are not needed in that mode.
+5. **G-code for the preview.** See [What the G-code can contain](#what-the-g-code-can-contain).
+6. **Connection.** USB for commands plus the network for the preview download, or NETWORK only, or UART. For the screen's own Wi-Fi see [WIFI and USB-C PORT](#wifi-and-usb-c-port).
 
 ---
 
