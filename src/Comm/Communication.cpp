@@ -111,6 +111,10 @@ namespace Comm
 
 	Seq* g_currentReqSeq = nullptr;
 
+#if FETCH_GLOBAL
+	constexpr std::chrono::milliseconds GlobalMinInterval = 5000ms;
+#endif
+
 	enum class CheckSeqResult
 	{
 		Ready,
@@ -130,6 +134,16 @@ namespace Comm
 			seq->state = SeqStateInit;
 			return CheckSeqResult::Error;
 		}
+#if FETCH_GLOBAL
+		// seqs.global changes with every "set global", even to the same value. Macros that set globals all the
+		// time (MillenniumOS NeXT's maintenance daemon: every 250 ms) would have the whole global object (several
+		// KB) fetched without a break: a change is fetched at most every GlobalMinInterval.
+		if (seq->state == SeqStateUpdate && seq->seqid == rcvSeqsGlobal &&
+			seq->lastRequestTime + GlobalMinInterval > TimeHelper::getRunningTime())
+		{
+			return CheckSeqResult::Ok; // later: the state stays SeqStateUpdate
+		}
+#endif
 		if (seq->state == SeqStateInit || seq->state == SeqStateUpdate)
 		{
 			LOG_DBG("seq '{:s}' is ready to be requested", seq->key);

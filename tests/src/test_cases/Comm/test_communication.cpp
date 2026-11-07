@@ -9,7 +9,9 @@
 #include "Debug.h"
 #include "Hardware/Duet.h"
 #include "test_utils/TestSuite.h"
+#include <algorithm>
 #include <gtest/gtest.h>
+#include <string>
 #include <vector>
 
 class TestCommunication : public TestSuite
@@ -125,6 +127,39 @@ TEST_F(TestCommunication, SendNext)
 
 	EXPECT_STREQ(Comm::g_currentReqSeq->key, "tools");
 	EXPECT_EQ(boardsSeq->state, Comm::SeqState::SeqStateInit);
+	Comm::g_currentReqSeq->state = Comm::SeqState::SeqStateOk;
+	setSeqState("boards", Comm::SeqState::SeqStateOk);
+
+	// seqs.global: fetched at most every 5 s (NeXT's daemon sets globals every 250 ms)
+	if (hasGlobal)
+	{
+		auto* globalSeq = Comm::FindSeqByKey("global");
+		ASSERT_NE(globalSeq, nullptr);
+		// Two requests to get past the frequent request ("") that alternates with the others
+		auto nextTwo = [&]()
+		{
+			std::vector<std::string> keys;
+			for (int i = 0; i < 2; ++i)
+			{
+				if (Comm::sendNext() && Comm::g_currentReqSeq != nullptr)
+				{
+					keys.emplace_back(Comm::g_currentReqSeq->key);
+					Comm::g_currentReqSeq->state = Comm::SeqState::SeqStateOk;
+				}
+			}
+			return keys;
+		};
+		globalSeq->lastRequestTime = TimeHelper::getRunningTime(); // fetched just now
+		globalSeq->state = Comm::SeqState::SeqStateUpdate;
+		for (const auto& k : nextTwo())
+		{
+			EXPECT_NE(k, "global"); // too soon: it waits
+		}
+		EXPECT_EQ(globalSeq->state, Comm::SeqState::SeqStateUpdate); // still pending
+		globalSeq->lastRequestTime = TimeHelper::getRunningTime() - std::chrono::milliseconds(5100);
+		const auto keys = nextTwo();
+		EXPECT_NE(std::find(keys.begin(), keys.end(), "global"), keys.end()); // 5 s later: fetched
+	}
 }
 
 TEST_F(TestCommunication, GetInteger)
