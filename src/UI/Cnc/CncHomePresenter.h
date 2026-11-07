@@ -55,6 +55,7 @@ namespace UI
 		void onDisconnect() override {}
 
 	  private:
+		bool m_lostConnection = false;				// "Disconnected from Duet" seen: the next "Connected" is shown
 		char m_rowLetters[MaxDroAxes] = {'X', 'Y', 'Z', 'A'};
 		size_t m_rowCount = 3;
 		size_t m_zAxisIndex = 2;					// RRF axis number of Z (tool offsets are by axis)

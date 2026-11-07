@@ -194,7 +194,7 @@ namespace UI::Cnc::Keyboard
 			if (s_shift)
 			{
 				s_shift->setGlyph(s_symbols ? GlyphButton::Kind::Char : GlyphButton::Kind::Shift, s_symbols ? '~' : 0);
-				s_shift->setActive(!s_symbols && s_lower);
+				s_shift->setActive(!s_symbols && !s_lower); // lit = capitals (the default for G-code), like a caps lock
 			}
 			if (s_mode)
 			{
@@ -595,6 +595,11 @@ namespace UI::Cnc::Keyboard
 	bool LowerCase()
 	{
 		return s_lower;
+	}
+
+	bool ShiftLit()
+	{
+		return s_shift && s_shift->active();
 	}
 
 	bool Symbols()

@@ -14,6 +14,7 @@
 #include "UI/Cnc/CncPanel.h"
 #include "UI/Cnc/CncPopup.h"
 #include "UI/Cnc/CncState.h"
+#include "i18n/i18n.h"
 #include "test_utils/UiTestSuite.h"
 #include <gtest/gtest.h>
 #include <string>
@@ -454,4 +455,22 @@ TEST_F(TestCncMessages, NumpadTakesThreeDecimals)
 	EXPECT_EQ(Popup::NumpadValue(), "2.000");
 	Popup::PressOk();
 	EXPECT_EQ(last(), "M292 R{2} S12\n");
+}
+
+// The screen's own "Connected to Duet" covered the start-up splash: at start-up it only goes to CONSOLE,
+// after "Disconnected from Duet" (shown) the reconnection is shown again
+TEST_F(TestCncMessages, ConnectedMessageOnlyAfterADisconnect)
+{
+	makeView();
+	reply(_("message.connected"));
+	EXPECT_FALSE(Popup::IsResponseOpen());
+	EXPECT_EQ(view->getConsolePage().lineText(0), _("message.connected"));
+	reply(_("message.disconnected"));
+	EXPECT_TRUE(Popup::IsResponseOpen());
+	Popup::Close();
+	reply(_("message.connected"));
+	EXPECT_TRUE(Popup::IsResponseOpen()); // back again: shown
+	Popup::Close();
+	reply(_("message.connected"));
+	EXPECT_FALSE(Popup::IsResponseOpen());
 }

@@ -70,5 +70,6 @@ namespace UI::Cnc::Keyboard
 	void PressCancel();								// X
 	void PressArrow(int dir);
 	bool LowerCase();
+	bool ShiftLit();								// SHIFT drawn lit (accent): capitals
 	bool Symbols();
 }

@@ -387,8 +387,11 @@ TEST_F(TestCncJobList, KeyboardKeys)
 	auto view = makeView();
 	auto& page = view->getJobListPage();
 	page.searchPressed();
-	Keyboard::PressShift(); // lower case
+	EXPECT_FALSE(Keyboard::LowerCase()); // capitals by default: SHIFT lit (accent), like a caps lock
+	EXPECT_TRUE(Keyboard::ShiftLit());
+	Keyboard::PressShift(); // lower case: SHIFT not lit
 	EXPECT_TRUE(Keyboard::LowerCase());
+	EXPECT_FALSE(Keyboard::ShiftLit());
 	Keyboard::PressMode(); // symbols: SHIFT types '~'
 	EXPECT_TRUE(Keyboard::Symbols());
 	EXPECT_TRUE(lv_test_screenshot_compare("cnc/keyboard_symbols.png"));

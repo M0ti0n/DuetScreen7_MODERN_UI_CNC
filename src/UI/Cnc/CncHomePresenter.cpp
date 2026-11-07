@@ -17,6 +17,7 @@
 #include "ObjectModel/Spindle.h"
 #include "ObjectModel/Tool.h"
 #include "Subscribers/ResponseSubscribers.h"
+#include "i18n/i18n.h"
 #include <cmath>
 
 namespace UI
@@ -288,6 +289,21 @@ namespace UI
 	{
 		ZoneScoped;
 		m_view->getConsolePage().response(text); // SYSTEM > CONSOLE log (first: is it a typed command's reply?)
+		// The screen's own "Connected to Duet": only in CONSOLE at start-up (it covered the splash), shown
+		// again after "Disconnected from Duet" so a reconnection is seen
+		if (type == ResponseType::INFO && text == _("message.connected"))
+		{
+			const bool show = m_lostConnection;
+			m_lostConnection = false;
+			if (!show)
+			{
+				return;
+			}
+		}
+		else if (type == ResponseType::INFO && text == _("message.disconnected"))
+		{
+			m_lostConnection = true;
+		}
 		m_view->getAlertsPage().collect(text);	 // SYSTEM > ALERT history
 		Cnc::Messages::Response(text,
 								type == ResponseType::ERROR || text.find("Error:") != std::string::npos,
