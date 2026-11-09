@@ -234,6 +234,7 @@ namespace Comm
 		if (m_seq != nullptr)
 		{
 			m_seq->state = SeqStateOk;
+			GlobalAnswered(m_seq); // one name of the globals sweep: on to the next one
 			LOG_DBG("seq '{:s}' DONE", m_seq->key);
 			m_seq = nullptr;
 		}
@@ -277,6 +278,12 @@ namespace Comm
 			}
 		}
 
+		// M409 K"global.<name>" of a global the machine does not have: null, i.e. not there
+		if (StringStartsWith(id.c_str(), "global:") && strcmp(data, "null") == 0)
+		{
+			return;
+		}
+
 		// search for key in g_observerMap
 		Model::get().runSubscribers(id.c_str(), this, data, indices);
 
@@ -297,6 +304,10 @@ namespace Comm
 			if (g_currentReqSeq && (strcasecmp(data, g_currentReqSeq->key) == 0))
 			{
 				m_seq = g_currentReqSeq;
+			}
+			else if (IsGlobalSeq(g_currentReqSeq) && StringStartsWith(data, "global."))
+			{
+				m_seq = g_currentReqSeq; // one global of the sweep (M409 K"global.<name>")
 			}
 			else
 			{

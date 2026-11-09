@@ -11,7 +11,10 @@
 #include "Debug.h"
 
 #include "Comm/Communication.h"
+#include <algorithm>
 #include <stdarg.h>
+#include <string>
+#include <vector>
 
 #include "Comm/JsonDecoder.h"
 #include "Comm/Usb.h"
@@ -113,6 +116,9 @@ namespace Comm
 
 #if FETCH_GLOBAL
 	constexpr std::chrono::milliseconds GlobalMinInterval = 5000ms;
+	std::vector<std::string> s_globalKeys; // "global.<name>", in the order they are asked for
+	size_t s_globalSweep = 0;			   // index of the name asked for next / being answered
+	bool s_globalSweepChanged = false;	   // seqs.global changed during a sweep: another one after it
 #endif
 
 	enum class CheckSeqResult
@@ -138,7 +144,7 @@ namespace Comm
 		// seqs.global changes with every "set global", even to the same value. Macros that set globals all the
 		// time (MillenniumOS NeXT's maintenance daemon: every 250 ms) would have the whole global object (several
 		// KB) fetched without a break: a change is fetched at most every GlobalMinInterval.
-		if (seq->state == SeqStateUpdate && seq->seqid == rcvSeqsGlobal &&
+		if (seq->state == SeqStateUpdate && seq->seqid == rcvSeqsGlobal && s_globalSweep == 0 &&
 			seq->lastRequestTime + GlobalMinInterval > TimeHelper::getRunningTime())
 		{
 			return CheckSeqResult::Ok; // later: the state stays SeqStateUpdate
@@ -219,9 +225,10 @@ namespace Comm
 			return &s_freqSeq;
 		}
 
+		const bool oneGlobal = strncasecmp(key, "global.", 7) == 0; // one name of the globals sweep
 		for (size_t i = 0; i < s_seqs.size(); ++i)
 		{
-			if (strcasecmp(s_seqs[i].key, key) == 0)
+			if (strcasecmp(s_seqs[i].key, key) == 0 || (oneGlobal && s_seqs[i].seqid == rcvSeqsGlobal))
 			{
 				return &s_seqs[i];
 			}
@@ -242,6 +249,13 @@ namespace Comm
 				{
 					LOG_DBG("Seq {:s} needs updating {:d} -> {:d}\n", s_seqs[i].key, s_seqs[i].lastSeq, val);
 					s_seqs[i].lastSeq = val;
+#if FETCH_GLOBAL
+					if (seqid == rcvSeqsGlobal && s_globalSweep != 0)
+					{
+						s_globalSweepChanged = true; // in the middle of a sweep: another one after it
+						continue;
+					}
+#endif
 					s_seqs[i].state = SeqStateUpdate;
 				}
 			}
@@ -258,6 +272,54 @@ namespace Comm
 		}
 		g_currentReqSeq = nullptr;
 		s_sendFreqNext = true;
+#if FETCH_GLOBAL
+		s_globalSweep = 0;
+		s_globalSweepChanged = false;
+#endif
+	}
+
+	void AddGlobalKeys(std::initializer_list<const char*> names)
+	{
+#if FETCH_GLOBAL
+		for (const char* n : names)
+		{
+			const std::string key = std::string("global.") + n;
+			if (std::find(s_globalKeys.begin(), s_globalKeys.end(), key) == s_globalKeys.end())
+			{
+				s_globalKeys.push_back(key);
+			}
+		}
+#else
+		(void)names;
+#endif
+	}
+
+	bool IsGlobalSeq(const Seq* seq)
+	{
+		return seq != nullptr && seq->seqid == rcvSeqsGlobal;
+	}
+
+	void GlobalAnswered(Seq* seq)
+	{
+#if FETCH_GLOBAL
+		if (!IsGlobalSeq(seq) || s_globalKeys.empty())
+		{
+			return;
+		}
+		if (++s_globalSweep < s_globalKeys.size())
+		{
+			seq->state = SeqStateUpdate; // the next name (sendNext puts a status request in between)
+			return;
+		}
+		s_globalSweep = 0;
+		if (s_globalSweepChanged)
+		{
+			s_globalSweepChanged = false;
+			seq->state = SeqStateUpdate; // fetched again after GlobalMinInterval
+		}
+#else
+		(void)seq;
+#endif
 	}
 
 	static void RequestSeq(Seq* seq)
@@ -280,6 +342,17 @@ namespace Comm
 		seq->state = SeqStateRequested;
 		g_currentReqSeq = seq;
 
+#if FETCH_GLOBAL
+		if (IsGlobalSeq(seq) && !s_globalKeys.empty())
+		{
+			if (s_globalSweep >= s_globalKeys.size())
+			{
+				s_globalSweep = 0;
+			}
+			Comm::DUET.RequestModel(s_globalKeys[s_globalSweep].c_str(), g_currentReqSeq->flags);
+			return;
+		}
+#endif
 		Comm::DUET.RequestModel(g_currentReqSeq->key, g_currentReqSeq->flags);
 	}
 

@@ -158,7 +158,7 @@ namespace UI::Cnc::Settings
 
 	// Machine data: a global response (subscribers registered by Init) and the writer, every 100 ms
 	void Init();					// registers the object model subscribers (once)
-	void Begin();					// "key":"global" arrived
+	void Begin();					// the globals start: "key":"global" or "global.<first name>"
 	void Value(Global g, const std::string& data);
 	void Tick();
 

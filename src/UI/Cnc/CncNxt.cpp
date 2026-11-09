@@ -7,6 +7,7 @@
 #include "CncNxt.h"
 #include "CncSettings.h"
 #include "CncState.h"
+#include "Comm/Communication.h"
 #include "Subscribers/Subscribers.h"
 #include <algorithm>
 #include <cctype>
@@ -20,7 +21,7 @@ namespace UI::Cnc::Nxt
 		bool s_inited = false;
 		bool s_loaded = false, s_touchProbe = false, s_toolSetter = false, s_fourthAxis = false;
 		int s_probeTool = -1;
-		int s_touchProbeIndex = 0;		// global.nxtTouchProbeID: the K number of the touch probe
+		int s_touchProbeIndex = 0; // global.nxtTouchProbeID: the K number of the touch probe
 		Values s_values;
 
 		const char* const CycleNames[NumCycles] = {"BORE",
@@ -100,6 +101,12 @@ namespace UI::Cnc::Nxt
 		SubscriberMap::addSubscriber("global:nxtFeatureFourthAxis", &onBool<&s_fourthAxis>);
 		SubscriberMap::addSubscriber("global:nxtProbeToolID", &onProbeTool);
 		SubscriberMap::addSubscriber("global:nxtTouchProbeID", &onTouchProbeIndex);
+		Comm::AddGlobalKeys({"nxtLoaded",
+							 "nxtProbeToolID",
+							 "nxtTouchProbeID",
+							 "nxtFeatureTouchProbe",
+							 "nxtFeatureToolSetter",
+							 "nxtFeatureFourthAxis"});
 	}
 
 	void Reset()
@@ -503,7 +510,8 @@ namespace UI::Cnc::Nxt
 		switch (c)
 		{
 		case Cycle::Bore:
-			return fmt::format("G6500 U{:d} D{:s} L{:s} O{:s}{:s}{:s}\n", u, num(v.diameter), num(v.depth), num(v.overtravel), r, q);
+			return fmt::format(
+				"G6500 U{:d} D{:s} L{:s} O{:s}{:s}{:s}\n", u, num(v.diameter), num(v.depth), num(v.overtravel), r, q);
 		case Cycle::Boss:
 			return fmt::format("G6501 U{:d} D{:s} L{:s} C{:s} O{:s}{:s}{:s}\n",
 							   u,
@@ -565,7 +573,8 @@ namespace UI::Cnc::Nxt
 							   r);
 		}
 		case Cycle::ViseCorner:
-			return fmt::format("G6520 U{:d} L{:s} C{:s} O{:s}{:s}\n", u, num(v.depth), num(v.clearance), num(v.overtravel), r);
+			return fmt::format(
+				"G6520 U{:d} L{:s} C{:s} O{:s}{:s}\n", u, num(v.depth), num(v.clearance), num(v.overtravel), r);
 		case Cycle::Rotation:
 			return fmt::format("G6506 U{:d} N{:d} D{:d} S{:s} L{:s} O{:s}{:s}{:s}\n",
 							   u,
@@ -602,7 +611,9 @@ namespace UI::Cnc::Nxt
 		{
 			items.push_back({"ROTARY FLAT", "M4912\n", "Rotary: flatness along Y (M4912)"});
 			items.push_back({"ROTARY CENTRE", "M4910\n", "Rotary: centre line Y (M4910)"});
-			items.push_back({"ROTARY Y0", fmt::format("M4807 W{:d}\n", 54 + s_values.saveTo), "Rotary centre as Y0 of the SAVE TO offset (M4807)"});
+			items.push_back({"ROTARY Y0",
+							 fmt::format("M4807 W{:d}\n", 54 + s_values.saveTo),
+							 "Rotary centre as Y0 of the SAVE TO offset (M4807)"});
 		}
 		return items;
 	}

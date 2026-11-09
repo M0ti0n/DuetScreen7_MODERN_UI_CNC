@@ -5,6 +5,7 @@
 #include "CncSettings.h"
 #include "CncPopup.h"
 #include "CncState.h"
+#include "Comm/Communication.h"
 #include "Subscribers/Subscribers.h"
 #include <algorithm>
 #include <cctype>
@@ -310,6 +311,10 @@ namespace UI::Cnc::Settings
 			(SubscriberMap::addSubscriber(s_keys[I].c_str(), &onGlobal<I>), ...);
 		}
 
+		// The globals arrive one by one (M409 K"global.<name>", in the order of Names): the first name starts
+		// them, the reply after the last one completes them (status replies in between are skipped)
+		bool s_lastSeen = false;
+		bool s_oneByOne = false; // the globals come one by one: complete after the last name, not when quiet
 		bool onKey(Comm::JsonDecoder*, const char* data, const size_t[])
 		{
 			State::RunOnUi(
@@ -317,11 +322,24 @@ namespace UI::Cnc::Settings
 				{
 					if (key == "global")
 					{
-						Begin();
+						Begin(); // the whole object at once (the tests): complete with the next reply
+						s_lastSeen = true;
+						s_oneByOne = false;
 					}
-					else if (s_receiving)
+					else if (key == std::string("global.") + Names[0])
 					{
-						finishIncoming(); // another response: the global one is complete
+						Begin();
+						s_lastSeen = false;
+						s_oneByOne = true;
+					}
+					else if (s_receiving && key == std::string("global.") + Names[NumGlobals - 1])
+					{
+						s_lastSeen = true; // its value follows
+					}
+					else if (s_receiving && s_lastSeen)
+					{
+						s_lastSeen = false;
+						finishIncoming(); // the next reply: the last value has arrived
 					}
 				});
 			return true;
@@ -571,6 +589,10 @@ namespace UI::Cnc::Settings
 		}
 		registerGlobals(std::make_index_sequence<NumGlobals>{});
 		SubscriberMap::addSubscriber("key", &onKey);
+		for (const char* n : Names)
+		{
+			Comm::AddGlobalKeys({n}); // read one by one, in this order
+		}
 	}
 
 	void Begin()
@@ -722,7 +744,7 @@ namespace UI::Cnc::Settings
 			s_known = false; // ask again after (re)connecting: maybe another machine
 			s_receiving = false;
 		}
-		if (s_receiving && now - s_lastValueTime >= QuietTime)
+		if (s_receiving && !s_oneByOne && now - s_lastValueTime >= QuietTime)
 		{
 			finishIncoming();
 		}

@@ -10,6 +10,7 @@
 
 #include "Comm/Commands.h"
 #include "FileInfo.h"
+#include <initializer_list>
 #include <stdint.h>
 
 namespace Comm
@@ -52,6 +53,13 @@ namespace Comm
 	void KickWatchdog();
 
 	Seq* GetNextSeq(struct Seq* current);
+
+	// The globals are read one by one (M409 K"global.<name>"): with MillenniumOS NeXT installed the whole global
+	// object is too big for the machine's reply buffers ({"err":-1}). The CNC pages register the names they need;
+	// one seqs.global update = one sweep over them. Without names the whole object is asked for.
+	void AddGlobalKeys(std::initializer_list<const char*> names);
+	bool IsGlobalSeq(const Seq* seq);
+	void GlobalAnswered(Seq* seq);						// a reply to the sweep's current name is complete
 	bool sendNext();
 	void init();
 } // namespace Comm

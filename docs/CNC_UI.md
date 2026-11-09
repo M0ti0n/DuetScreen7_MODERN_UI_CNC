@@ -128,7 +128,7 @@ not affected:
 | `src/ObjectModel/Tool.*` | `SetNextTool` / `GetNextTool` (state.nextTool) |
 | `src/Subscribers/StateSubscribers.*` | subscribes to `state:nextTool` |
 | `src/UI/Core/EventTypes.h` | `ProbeData` and `NextTool` events |
-| `src/Comm/Commands.*`, `src/Comm/JsonDecoder.cpp`, `src/Comm/Communication.cpp` | `seqs.global`: the machine's globals are fetched (CNC builds only, last in the list), for the CNC settings. A change is fetched at most every 5 s: `seqs.global` changes with every `set global`, and MillenniumOS NeXT's maintenance daemon sets globals every 250 ms |
+| `src/Comm/Commands.*`, `src/Comm/JsonDecoder.cpp`, `src/Comm/Communication.cpp` | `seqs.global`: the machine's globals are fetched (CNC builds only, last in the list), for the CNC settings. A change is fetched at most every 5 s: `seqs.global` changes with every `set global`, and MillenniumOS NeXT's maintenance daemon sets globals every 250 ms. They are read one by one (`M409 K"global.<name>"`, only the names the UI uses): with many globals (NeXT has ~190) RRF answers `M409 K"global"` with `{"err":-1}`, its reply would not fit its output buffers |
 | `src/ObjectModel/Files.*` | `RequestFilesAt(fullPath, …)`: a listing of any folder (JOB LIST on a second card, "1:/"); `RequestFiles` uses it |
 | `src/main.cpp` | the CNC UI instead of the printer UI (`-DDUETSCREEN_CNC_UI=ON`), portrait, rotation from SETTINGS, the start-up splash |
 | `tests/src/test_cases/Comm/test_communication.cpp` | `SendNext` expects the extra `global` request when the build has it |

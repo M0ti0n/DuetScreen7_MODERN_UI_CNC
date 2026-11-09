@@ -610,3 +610,43 @@ TEST_F(TestCncSettings, FactoryReset)
 	Popup::PressOk();
 	EXPECT_EQ(Panel::SoundSetting(), 1u);
 }
+
+// RRF answers M409 K"global" with {"err":-1} when the machine has many globals (NeXT: ~190): they are read
+// one by one, M409 K"global.<name>"; a name the machine does not have answers null
+TEST_F(TestCncSettings, GlobalsOneByOne)
+{
+	makeView();
+	EXPECT_FALSE(Settings::Known());
+	for (size_t i = 0; i < (size_t)Settings::Global::Count; ++i)
+	{
+		const std::string name = Settings::GlobalName((Settings::Global)i);
+		std::string value = "null";
+		if (name == "cncProbeMode")
+		{
+			value = "2";
+		}
+		else if (name == "cncJogFeed")
+		{
+			value = "700";
+		}
+		else if (name == "cncCustom2Label")
+		{
+			value = R"("LIGHT")";
+		}
+		else if (name == "cncCustom2Macro")
+		{
+			value = R"("0:/macros/light.g")";
+		}
+		load_model_data(R"({"key":"global.)" + name + R"(","flags":"v","result":)" + value + "}");
+		lv_tick_inc(Settings::QuietTime + 10); // slow replies: not complete before the last name
+		Settings::Tick();
+		EXPECT_FALSE(Settings::Known()) << name;
+	}
+	load_model_data(R"({"key":"global.nxtVersion","flags":"v","result":null})"); // the reply after the last
+	lv_tick_inc(10);
+	Settings::Tick();
+	EXPECT_TRUE(Settings::Known());
+	EXPECT_EQ(State::GetProbeMode(), State::ProbeMode::Manual);
+	EXPECT_EQ(State::JogFeed(), 700u);
+	EXPECT_STREQ(State::CustomLabel(1), "LIGHT");
+}
